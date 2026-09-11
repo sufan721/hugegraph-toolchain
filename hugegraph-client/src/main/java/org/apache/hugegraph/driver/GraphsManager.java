@@ -98,6 +98,14 @@ public class GraphsManager {
         this.graphsAPI.update(graph, nickname);
     }
 
+    public Map<String, String> createSnapshot(String graph) {
+        return this.graphsAPI.createSnapshot(graph);
+    }
+
+    public Map<String, String> resumeSnapshot(String graph) {
+        return this.graphsAPI.resumeSnapshot(graph);
+    }
+
     // TODO(@Thespica): see org.apache.hugegraph.api.graphs.GraphsAPI.drop
     public void dropGraph(String graph, String message) {
         this.graphsAPI.drop(graph, message);

@@ -48,6 +48,10 @@ public class GraphsAPI extends API {
     private static final String CLEARED = "cleared";
     private static final String RELOADED = "reloaded";
     private static final String UPDATED = "updated";
+    private static final String SNAPSHOT_CREATE = "snapshot_create";
+    private static final String SNAPSHOT_RESUME = "snapshot_resume";
+    private static final String SNAPSHOT_CREATED = "snapshot_created";
+    private static final String SNAPSHOT_RESUMED = "snapshot_resumed";
     private static final String GRAPHS = "graphs";
     private static final String MANAGE = "manage";
     private static final String PATH = "graphspaces/%s/graphs";
@@ -158,6 +162,30 @@ public class GraphsAPI extends API {
         String status = response.get(name);
         E.checkState(UPDATED.equals(status),
                      "Server status must be '%s', but got '%s'", UPDATED, status);
+        return response;
+    }
+
+    public Map<String, String> createSnapshot(String graph) {
+        return this.snapshot(graph, SNAPSHOT_CREATE, SNAPSHOT_CREATED);
+    }
+
+    public Map<String, String> resumeSnapshot(String graph) {
+        return this.snapshot(graph, SNAPSHOT_RESUME, SNAPSHOT_RESUMED);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> snapshot(String graph, String action,
+                                         String expectedStatus) {
+        this.client.checkApiVersion("0.74", "graph snapshot");
+        RestResult result = this.client.put(joinPath(this.path(), graph, action),
+                                            null, Collections.emptyMap());
+        Map<String, String> response = result.readObject(Map.class);
+        E.checkState(response.size() == 1 && response.containsKey(graph),
+                     "Response must be formatted to {\"%s\" : status}, but got %s",
+                     graph, response);
+        E.checkState(expectedStatus.equals(response.get(graph)),
+                     "Server status must be '%s', but got '%s'",
+                     expectedStatus, response.get(graph));
         return response;
     }
 
