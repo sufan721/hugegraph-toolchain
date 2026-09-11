@@ -79,6 +79,9 @@ public class SubCommands {
         this.commands.put("schedule-backup", new ScheduleBackup());
         this.commands.put("dump", new DumpGraph());
         this.commands.put("restore", new Restore());
+        this.commands.put("snapshot-backup", new SnapshotBackup());
+        this.commands.put("snapshot-restore", new SnapshotRestore());
+        this.commands.put("snapshot-list", new SnapshotList());
         this.commands.put("migrate", new Migrate());
 
         this.commands.put("deploy", new Deploy());
@@ -687,6 +690,37 @@ public class SubCommands {
         public void hdfsConf(Map<String, String> hdfsConf) {
             this.hdfsConf = hdfsConf;
         }
+    }
+
+    public static class SnapshotBackup {
+        @Parameter(names = {"--directory", "-d"}, required = true)
+        public String directory;
+        @Parameter(names = {"--mode", "-m"}, description = "full or incremental")
+        public String mode = "incremental";
+        @Parameter(names = "--keep-num", validateWith = PositiveValidator.class)
+        public int keepNum;
+        @Parameter(names = "--snapshot-dir")
+        public String snapshotDir;
+        @Parameter(names = "--no-clean-snapshot")
+        public boolean noCleanSnapshot;
+    }
+
+    public static class SnapshotRestore {
+        @Parameter(names = {"--directory", "-d"}, required = true)
+        public String directory;
+        @Parameter(names = "--version")
+        public Long version;
+        @Parameter(names = "--backup-id")
+        public String backupId;
+        @Parameter(names = "--confirm", required = true)
+        public boolean confirm;
+        @Parameter(names = "--snapshot-dir", required = true)
+        public String snapshotDir;
+    }
+
+    public static class SnapshotList {
+        @Parameter(names = {"--directory", "-d"}, required = true)
+        public String directory;
     }
 
     public static class Url {

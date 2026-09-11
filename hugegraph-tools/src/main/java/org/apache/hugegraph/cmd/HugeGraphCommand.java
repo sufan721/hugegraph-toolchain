@@ -36,6 +36,10 @@ import org.apache.hugegraph.manager.DumpGraphManager;
 import org.apache.hugegraph.manager.GraphsManager;
 import org.apache.hugegraph.manager.GremlinManager;
 import org.apache.hugegraph.manager.RestoreManager;
+import org.apache.hugegraph.manager.SnapshotBackupManager;
+import org.apache.hugegraph.manager.SnapshotRestoreManager;
+import org.apache.hugegraph.structure.snapshot.SnapshotManifest;
+import org.apache.hugegraph.structure.snapshot.SnapshotRepo;
 import org.apache.hugegraph.manager.TasksManager;
 import org.apache.hugegraph.structure.Task;
 import org.apache.hugegraph.structure.constant.GraphMode;
@@ -210,6 +214,51 @@ public class HugeGraphCommand {
                 restoreManager.mode(mode);
                 restoreManager.restore(restore.types());
                 break;
+            case "snapshot-backup": {
+                SubCommands.SnapshotBackup snapshot = this.subCommand(subCmd);
+                E.checkArgument(StringUtils.isNotEmpty(snapshot.snapshotDir),
+                                "--snapshot-dir is required for snapshot-backup");
+                try {
+                    SnapshotBackupManager snapshotManager = manager(SnapshotBackupManager.class);
+                    SnapshotManifest manifest = snapshotManager.backup(this.graph(), snapshot);
+                    Printer.print("Snapshot version %s created (%s files, %s delta files)",
+                                  manifest.getVersion(), manifest.getStats().getTotalFiles(),
+                                  manifest.getStats().getDeltaFiles());
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Snapshot backup failed", e);
+                }
+                break;
+            }
+            case "snapshot-restore": {
+                SubCommands.SnapshotRestore snapshot = this.subCommand(subCmd);
+                graphsManager = manager(GraphsManager.class);
+                mode = graphsManager.mode(this.graph());
+                E.checkState(mode.maintaining(),
+                             "Invalid mode '%s' of graph '%s' for snapshot restore",
+                             mode, this.graph());
+                try {
+                    SnapshotRestoreManager snapshotManager = manager(SnapshotRestoreManager.class);
+                    SnapshotManifest manifest = snapshotManager.restore(this.graph(), snapshot);
+                    Printer.print("Snapshot version %s restored", manifest.getVersion());
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Snapshot restore failed", e);
+                }
+                break;
+            }
+            case "snapshot-list": {
+                SubCommands.SnapshotList snapshot = this.subCommand(subCmd);
+                try (SnapshotRepo repo = new SnapshotRepo(java.nio.file.Paths.get(snapshot.directory), this.graph())) {
+                    for (SnapshotManifest manifest : repo.list()) {
+                        Printer.print("version=%s backupId=%s mode=%s files=%s bytes=%s deltaBytes=%s",
+                                      manifest.getVersion(), manifest.getBackupId(), manifest.getMode(),
+                                      manifest.getStats().getTotalFiles(), manifest.getStats().getTotalBytes(),
+                                      manifest.getStats().getDeltaBytes());
+                    }
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Snapshot list failed", e);
+                }
+                break;
+            }
             case "migrate":
                 SubCommands.Migrate migrate = this.subCommand(subCmd);
                 Printer.print("Migrate graph '%s' from '%s' to '%s' as '%s'",
