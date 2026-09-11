@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.unit;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.apache.hugegraph.api.graphs.GraphsAPI;
@@ -154,6 +155,76 @@ public class GraphsAPITest extends BaseUnitTest {
                             pathCaptor.getValue());
         Assert.assertTrue(paramsCaptor.getValue().isEmpty());
         Mockito.verify(mockResult).readObject(Map.class);
+    }
+
+    @Test
+    public void testCreateSnapshotUsesExpectedEndpointAndStatus() {
+        RestResult mockResult = Mockito.mock(RestResult.class);
+        Map<String, String> response = Collections.singletonMap(
+                "test-graph", "snapshot_created");
+        Mockito.when(mockResult.readObject(Map.class)).thenReturn(response);
+
+        ArgumentCaptor<String> pathCaptor =
+                ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object> bodyCaptor =
+                ArgumentCaptor.forClass(Object.class);
+        Mockito.when(this.mockClient.put(pathCaptor.capture(),
+                                         Mockito.isNull(),
+                                         bodyCaptor.capture()))
+               .thenReturn(mockResult);
+
+        Assert.assertEquals(response, this.graphsAPI.createSnapshot("test-graph"));
+        Assert.assertEquals("graphspaces/DEFAULT/graphs/test-graph/snapshot_create",
+                            pathCaptor.getValue());
+        Assert.assertTrue(((Map<?, ?>) bodyCaptor.getValue()).isEmpty());
+        Mockito.verify(this.mockClient).checkApiVersion("0.74", "graph snapshot");
+        Mockito.verify(mockResult).readObject(Map.class);
+    }
+
+    @Test
+    public void testResumeSnapshotUsesExpectedEndpointAndStatus() {
+        RestResult mockResult = Mockito.mock(RestResult.class);
+        Map<String, String> response = Collections.singletonMap(
+                "test-graph", "snapshot_resumed");
+        Mockito.when(mockResult.readObject(Map.class)).thenReturn(response);
+
+        ArgumentCaptor<String> pathCaptor =
+                ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object> bodyCaptor =
+                ArgumentCaptor.forClass(Object.class);
+        Mockito.when(this.mockClient.put(pathCaptor.capture(),
+                                         Mockito.isNull(),
+                                         bodyCaptor.capture()))
+               .thenReturn(mockResult);
+
+        Assert.assertEquals(response, this.graphsAPI.resumeSnapshot("test-graph"));
+        Assert.assertEquals("graphspaces/DEFAULT/graphs/test-graph/snapshot_resume",
+                            pathCaptor.getValue());
+        Assert.assertTrue(((Map<?, ?>) bodyCaptor.getValue()).isEmpty());
+        Mockito.verify(this.mockClient).checkApiVersion("0.74", "graph snapshot");
+        Mockito.verify(mockResult).readObject(Map.class);
+    }
+
+    @Test
+    public void testGraphsManagerDelegatesSnapshotOperations() {
+        GraphsManager manager = new GraphsManager(this.mockClient, "DEFAULT");
+        Map<String, String> created = Collections.singletonMap(
+                "test-graph", "snapshot_created");
+        Map<String, String> resumed = Collections.singletonMap(
+                "test-graph", "snapshot_resumed");
+        RestResult createdResult = Mockito.mock(RestResult.class);
+        RestResult resumedResult = Mockito.mock(RestResult.class);
+        Mockito.when(createdResult.readObject(Map.class)).thenReturn(created);
+        Mockito.when(resumedResult.readObject(Map.class)).thenReturn(resumed);
+        Mockito.when(this.mockClient.put(Mockito.anyString(),
+                                         Mockito.isNull(),
+                                         Mockito.any()))
+               .thenReturn(createdResult, resumedResult);
+
+        Assert.assertEquals(created, manager.createSnapshot("test-graph"));
+        Assert.assertEquals(resumed, manager.resumeSnapshot("test-graph"));
+        Mockito.verify(this.mockClient, Mockito.times(2))
+               .checkApiVersion("0.74", "graph snapshot");
     }
 
     @Test
