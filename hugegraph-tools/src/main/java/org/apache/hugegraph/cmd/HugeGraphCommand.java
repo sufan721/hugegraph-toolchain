@@ -36,6 +36,7 @@ import org.apache.hugegraph.manager.DumpGraphManager;
 import org.apache.hugegraph.manager.GraphsManager;
 import org.apache.hugegraph.manager.GremlinManager;
 import org.apache.hugegraph.manager.RestoreManager;
+import org.apache.hugegraph.snapshot.SnapshotManager;
 import org.apache.hugegraph.manager.TasksManager;
 import org.apache.hugegraph.structure.Task;
 import org.apache.hugegraph.structure.constant.GraphMode;
@@ -210,6 +211,30 @@ public class HugeGraphCommand {
                 restoreManager.mode(mode);
                 restoreManager.restore(restore.types());
                 break;
+            case "snapshot-backup": {
+                SubCommands.SnapshotBackup snapshotBackup =
+                        this.subCommand(subCmd);
+                SnapshotManager snapshotManager = manager(SnapshotManager.class);
+                snapshotManager.init(snapshotBackup);
+                snapshotManager.backup();
+                break;
+            }
+            case "snapshot-restore": {
+                GraphsManager snapshotGraphsManager =
+                        manager(GraphsManager.class);
+                GraphMode snapshotMode = snapshotGraphsManager.mode(
+                                         this.graph());
+                E.checkState(snapshotMode.maintaining(),
+                             "Invalid mode '%s' of graph '%s' for " +
+                             "snapshot-restore sub-command",
+                             snapshotMode, this.graph());
+                SubCommands.SnapshotRestore snapshotRestore =
+                        this.subCommand(subCmd);
+                SnapshotManager snapshotManager = manager(SnapshotManager.class);
+                snapshotManager.init(snapshotRestore);
+                snapshotManager.restore();
+                break;
+            }
             case "migrate":
                 SubCommands.Migrate migrate = this.subCommand(subCmd);
                 Printer.print("Migrate graph '%s' from '%s' to '%s' as '%s'",

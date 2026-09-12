@@ -31,6 +31,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.constant.AuthRestoreConflictStrategy;
 import org.apache.hugegraph.manager.TasksManager;
+import org.apache.hugegraph.snapshot.SnapshotMode;
 import org.apache.hugegraph.structure.constant.GraphMode;
 import org.apache.hugegraph.structure.constant.HugeType;
 import org.apache.hugegraph.util.E;
@@ -79,6 +80,8 @@ public class SubCommands {
         this.commands.put("schedule-backup", new ScheduleBackup());
         this.commands.put("dump", new DumpGraph());
         this.commands.put("restore", new Restore());
+        this.commands.put("snapshot-backup", new SnapshotBackup());
+        this.commands.put("snapshot-restore", new SnapshotRestore());
         this.commands.put("migrate", new Migrate());
 
         this.commands.put("deploy", new Deploy());
@@ -242,6 +245,61 @@ public class SubCommands {
         }
     }
 
+    public static class SnapshotCommand {
+
+        @Parameter(names = {"--directory", "-d"}, arity = 1, required = true,
+                   description = "Directory used to store snapshot backups")
+        public String directory;
+
+        @Parameter(names = {"--server-data-root"}, arity = 1,
+                   description = "Shared directory containing server RocksDB " +
+                                 "data. Defaults to " +
+                                 "HUGEGRAPH_SERVER_DATA_ROOT or --directory")
+        public String serverDataRoot;
+
+        public String directory() {
+            return this.directory;
+        }
+
+        public String serverDataRoot() {
+            return this.serverDataRoot;
+        }
+    }
+
+    @Parameters(commandDescription = "Create a physical RocksDB snapshot backup")
+    public static class SnapshotBackup extends SnapshotCommand {
+
+        @Parameter(names = {"--mode", "-m"}, arity = 1,
+                   validateWith = {SnapshotModeValidator.class},
+                   description = "Snapshot mode, valid is [full, incremental]")
+        public String mode = "incremental";
+
+        @Parameter(names = {"--keep-num"}, arity = 1,
+                   validateWith = {NonNegativeValidator.class},
+                   description = "Number of latest snapshot versions to keep, " +
+                                 "0 means keep all")
+        public int keepNum = 0;
+
+        public String mode() {
+            return this.mode;
+        }
+
+        public int keepNum() {
+            return this.keepNum;
+        }
+    }
+
+    @Parameters(commandDescription = "Restore a physical RocksDB snapshot")
+    public static class SnapshotRestore extends SnapshotCommand {
+
+        @Parameter(names = {"--backup-id", "--version"}, arity = 1,
+                   description = "Snapshot version to restore, default is latest")
+        public String backupId;
+
+        public String backupId() {
+            return this.backupId;
+        }
+    }
     @Parameters(commandDescription = "Dump graph to files")
     public static class DumpGraph extends BackupRestore {
 
@@ -1240,6 +1298,37 @@ public class SubCommands {
             if (!file.exists() || !file.isDirectory()) {
                 throw new ParameterException(String.format(
                           "Invalid value of argument '%s': '%s'", name, value));
+            }
+        }
+    }
+
+    public static class SnapshotModeValidator implements IParameterValidator {
+
+        @Override
+        public void validate(String name, String value) {
+            try {
+                SnapshotMode.from(value);
+            } catch (IllegalArgumentException e) {
+                throw new ParameterException(e.getMessage());
+            }
+        }
+    }
+
+    public static class NonNegativeValidator implements IParameterValidator {
+
+        @Override
+        public void validate(String name, String value) {
+            try {
+                int number = Integer.parseInt(value);
+                if (number < 0) {
+                    throw new ParameterException(
+                              "Parameter " + name +
+                              " should be non-negative, but got " + value);
+                }
+            } catch (NumberFormatException e) {
+                throw new ParameterException(
+                          "Parameter " + name + " should be an integer, " +
+                          "but got " + value);
             }
         }
     }

@@ -132,6 +132,14 @@ public class GraphsManager {
         return this.graphsAPI.readMode(graph);
     }
 
+    public Map<String, String> createSnapshot(String graph) {
+        return this.graphsAPI.createSnapshot(graph);
+    }
+
+    public Map<String, String> resumeSnapshot(String graph) {
+        return this.graphsAPI.resumeSnapshot(graph);
+    }
+
     public String clone(String graph, Map<String, Object> body) {
         return this.graphsAPI.clone(graph, body);
     }
