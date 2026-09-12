@@ -17,6 +17,8 @@
 
 package org.apache.hugegraph.test.functional;
 
+import org.apache.hugegraph.snapshot.SnapshotCommandTest;
+import org.apache.hugegraph.snapshot.SnapshotRepositoryTest;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 
@@ -24,7 +26,9 @@ import org.junit.runners.Suite;
 @Suite.SuiteClasses({
     AuthBackupTest.class,
     AuthRestoreTest.class,
-    CommandTest.class
+    CommandTest.class,
+    SnapshotRepositoryTest.class,
+    SnapshotCommandTest.class
 })
 public class FuncTestSuite {
 }
