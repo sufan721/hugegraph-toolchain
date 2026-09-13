@@ -158,6 +158,45 @@ public class GraphsAPITest extends BaseUnitTest {
     }
 
     @Test
+    public void testSnapshotOperationsValidateResponse() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Map<String, String> response = Collections.singletonMap(
+                "test-graph", "snapshot_created");
+        Mockito.when(result.readObject(Map.class)).thenReturn(response);
+        ArgumentCaptor<String> path = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> action = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> params =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.when(this.mockClient.put(path.capture(), action.capture(),
+                                         params.capture()))
+               .thenReturn(result);
+
+        Assert.assertEquals(response, this.graphsAPI.createSnapshot(
+                "test-graph"));
+        Assert.assertEquals("graphspaces/DEFAULT/graphs/test-graph",
+                            path.getValue());
+        Assert.assertEquals("snapshot_create", action.getValue());
+        Assert.assertTrue(params.getValue().isEmpty());
+
+        response = Collections.singletonMap("test-graph", "snapshot_resumed");
+        Mockito.when(result.readObject(Map.class)).thenReturn(response);
+        Assert.assertEquals(response, this.graphsAPI.resumeSnapshot(
+                "test-graph"));
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testSnapshotOperationRejectsInvalidResponse() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.singletonMap("other", "snapshot_created"));
+        Mockito.when(this.mockClient.put(Mockito.anyString(),
+                                         Mockito.anyString(), Mockito.any()))
+               .thenReturn(result);
+        this.graphsAPI.createSnapshot("test-graph");
+    }
+
+    @Test
     public void testCreateSnapshotUsesCanonicalPut() {
         RestResult mockResult = Mockito.mock(RestResult.class);
         Mockito.when(mockResult.readObject(Map.class))
