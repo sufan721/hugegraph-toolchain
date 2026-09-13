@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.unit;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.apache.hugegraph.api.graphs.GraphsAPI;
@@ -154,6 +155,96 @@ public class GraphsAPITest extends BaseUnitTest {
                             pathCaptor.getValue());
         Assert.assertTrue(paramsCaptor.getValue().isEmpty());
         Mockito.verify(mockResult).readObject(Map.class);
+    }
+
+    @Test
+    public void testCreateSnapshotUsesCanonicalPut() {
+        RestResult mockResult = Mockito.mock(RestResult.class);
+        Mockito.when(mockResult.readObject(Map.class))
+               .thenReturn(Collections.singletonMap("test-graph",
+                                                    "snapshot_created"));
+
+        ArgumentCaptor<String> pathCaptor =
+                ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> actionCaptor =
+                ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(Map.class);
+
+        Mockito.when(this.mockClient.put(pathCaptor.capture(),
+                                         actionCaptor.capture(),
+                                         bodyCaptor.capture()))
+               .thenReturn(mockResult);
+
+        Map<String, String> response = this.graphsAPI.createSnapshot("test-graph");
+
+        Assert.assertEquals("graphspaces/DEFAULT/graphs/test-graph",
+                            pathCaptor.getValue());
+        Assert.assertEquals("snapshot_create", actionCaptor.getValue());
+        Assert.assertTrue(bodyCaptor.getValue().isEmpty());
+        Assert.assertEquals("snapshot_created", response.get("test-graph"));
+    }
+
+    @Test
+    public void testResumeSnapshotUsesCanonicalPut() {
+        RestResult mockResult = Mockito.mock(RestResult.class);
+        Mockito.when(mockResult.readObject(Map.class))
+               .thenReturn(Collections.singletonMap("test-graph",
+                                                    "snapshot_resumed"));
+
+        ArgumentCaptor<String> pathCaptor =
+                ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> actionCaptor =
+                ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(Map.class);
+
+        Mockito.when(this.mockClient.put(pathCaptor.capture(),
+                                         actionCaptor.capture(),
+                                         bodyCaptor.capture()))
+               .thenReturn(mockResult);
+
+        Map<String, String> response = this.graphsAPI.resumeSnapshot("test-graph");
+
+        Assert.assertEquals("graphspaces/DEFAULT/graphs/test-graph",
+                            pathCaptor.getValue());
+        Assert.assertEquals("snapshot_resume", actionCaptor.getValue());
+        Assert.assertTrue(bodyCaptor.getValue().isEmpty());
+        Assert.assertEquals("snapshot_resumed", response.get("test-graph"));
+    }
+
+    @Test
+    public void testCreateSnapshotRejectsInvalidResponse() {
+        Assert.assertThrows(IllegalStateException.class, () -> {
+            this.invokeSnapshot(false, Collections.singletonMap(
+                                "other-graph", "snapshot_created"));
+        });
+        Assert.assertThrows(IllegalStateException.class, () -> {
+            this.invokeSnapshot(false, Collections.singletonMap(
+                                "test-graph", "snapshot_resumed"));
+        });
+    }
+
+    @Test
+    public void testResumeSnapshotRejectsInvalidResponse() {
+        Assert.assertThrows(IllegalStateException.class, () -> {
+            this.invokeSnapshot(true, Collections.singletonMap(
+                                "test-graph", "snapshot_created"));
+        });
+    }
+
+    private Map<String, String> invokeSnapshot(boolean resume,
+                                               Map<String, String> response) {
+        RestResult mockResult = Mockito.mock(RestResult.class);
+        Mockito.when(mockResult.readObject(Map.class)).thenReturn(response);
+        Mockito.when(this.mockClient.put(Mockito.anyString(),
+                                         Mockito.anyString(),
+                                         Mockito.any()))
+               .thenReturn(mockResult);
+        return resume ? this.graphsAPI.resumeSnapshot("test-graph") :
+                        this.graphsAPI.createSnapshot("test-graph");
     }
 
     @Test

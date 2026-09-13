@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import org.apache.commons.lang3.StringUtils;
@@ -85,13 +86,29 @@ public class SnapshotManager extends ToolManager {
 
     private void init(String directory, String serverDataRoot) {
         SnapshotStorage storage = new LocalSnapshotStorage(
-                Paths.get(directory).resolve(this.graph()).toString());
+                                  graphRoot(directory, this.graph()));
         SnapshotMetadataManager metadata = new SnapshotMetadataManager(
                                             storage, this.graph());
         this.repository = new SnapshotRepository(storage, metadata);
         this.serverStorage = new LocalSnapshotStorage(
                              serverStorageRoot(serverDataRoot));
         this.snapshotClient = new SnapshotClient(this.client);
+    }
+
+    /**
+     * Resolve the directory which stores the snapshots of a graph, the graph
+     * name can't be an absolute path or escape from the backup directory.
+     */
+    static Path graphRoot(String directory, String graph) {
+        E.checkArgument(StringUtils.isNotEmpty(graph),
+                        "Graph name can't be null or empty");
+        Path root = Paths.get(directory).toAbsolutePath().normalize();
+        Path graphRoot = root.resolve(graph).normalize();
+        E.checkArgument(graphRoot.startsWith(root) && !graphRoot.equals(root),
+                        "Invalid graph name '%s', it must resolve to a " +
+                        "directory inside the snapshot directory '%s'",
+                        graph, root);
+        return graphRoot;
     }
 
     private void cleanupServerSnapshot(Throwable cause) {

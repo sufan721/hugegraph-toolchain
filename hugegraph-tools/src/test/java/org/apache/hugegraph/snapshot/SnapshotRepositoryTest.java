@@ -28,7 +28,9 @@ import org.junit.rules.TemporaryFolder;
 
 public class SnapshotRepositoryTest {
 
-    private static final String SNAPSHOT_DIR = "snapshot_rocksdb-data/g";
+    private static final String SNAPSHOT_ROOT = "snapshot_rocksdb-data";
+    private static final String SNAPSHOT_DIR = SNAPSHOT_ROOT + "/g";
+    private static final String OTHER_SNAPSHOT_DIR = SNAPSHOT_ROOT + "/other";
 
     @Rule
     public TemporaryFolder temporary = new TemporaryFolder();
@@ -120,7 +122,7 @@ public class SnapshotRepositoryTest {
     @Test
     public void testSnapshotSpanningDirectoriesIsRejected() {
         this.writeServerFile("CURRENT", "content");
-        this.serverStorage.write("snapshot_other/CURRENT",
+        this.serverStorage.write("snapshot_other/graph/CURRENT",
                                  "other".getBytes(StandardCharsets.UTF_8),
                                  true);
         SnapshotManifest manifest = this.repository.backup(
@@ -134,21 +136,51 @@ public class SnapshotRepositoryTest {
             Assert.assertTrue(e.getMessage().contains("multiple directories"));
         }
         Assert.assertEquals("content", this.readServerFile("CURRENT"));
-        Assert.assertEquals("other", this.readServerFile("snapshot_other",
+        Assert.assertEquals("other", this.readServerFile("snapshot_other/graph",
                                                          "CURRENT"));
     }
 
     @Test
     public void testCleanupServerSnapshotWithoutManifest() {
         this.writeServerFile("CURRENT", "content");
-        this.serverStorage.write("snapshot_other/CURRENT",
+        this.serverStorage.write("snapshot_other/graph/CURRENT",
                                  "other".getBytes(StandardCharsets.UTF_8),
                                  true);
 
         this.repository.cleanupServerSnapshot(this.serverStorage);
 
         Assert.assertFalse(this.serverStorage.exists(SNAPSHOT_DIR));
-        Assert.assertFalse(this.serverStorage.exists("snapshot_other"));
+        Assert.assertFalse(this.serverStorage.exists("snapshot_other/graph"));
+    }
+
+    @Test
+    public void testCleanupKeepsOtherGraphsSnapshot() {
+        this.writeServerFile("CURRENT", "content");
+        SnapshotManifest manifest = this.repository.backup(
+                                     this.serverStorage,
+                                     SnapshotMode.FULL, 0);
+        this.writeOtherGraphFile("CURRENT", "other");
+
+        this.repository.cleanupServerSnapshot(this.serverStorage, manifest);
+
+        Assert.assertFalse(this.serverStorage.exists(SNAPSHOT_DIR));
+        Assert.assertEquals("other", this.readOtherGraphFile("CURRENT"));
+        Assert.assertTrue(this.serverStorage.exists(SNAPSHOT_ROOT));
+    }
+
+    @Test
+    public void testRestoreKeepsOtherGraphsSnapshot() {
+        this.writeServerFile("CURRENT", "current-v1");
+        SnapshotManifest manifest = this.repository.backup(
+                                     this.serverStorage,
+                                     SnapshotMode.FULL, 0);
+        this.writeServerFile("CURRENT", "dirty");
+        this.writeOtherGraphFile("CURRENT", "other");
+
+        this.repository.restore(this.serverStorage, manifest.backupId());
+
+        Assert.assertEquals("current-v1", this.readServerFile("CURRENT"));
+        Assert.assertEquals("other", this.readOtherGraphFile("CURRENT"));
     }
 
     @Test
@@ -183,6 +215,16 @@ public class SnapshotRepositoryTest {
         this.serverStorage.write(SNAPSHOT_DIR + "/" + name,
                                  content.getBytes(StandardCharsets.UTF_8),
                                  true);
+    }
+
+    private void writeOtherGraphFile(String name, String content) {
+        this.serverStorage.write(OTHER_SNAPSHOT_DIR + "/" + name,
+                                 content.getBytes(StandardCharsets.UTF_8),
+                                 true);
+    }
+
+    private String readOtherGraphFile(String name) {
+        return this.readServerFile(OTHER_SNAPSHOT_DIR, name);
     }
 
     private String readServerFile(String name) {

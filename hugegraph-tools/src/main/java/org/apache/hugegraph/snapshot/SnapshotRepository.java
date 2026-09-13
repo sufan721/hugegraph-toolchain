@@ -25,6 +25,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -46,6 +48,8 @@ public class SnapshotRepository {
                              .withZone(ZoneId.systemDefault());
     private static final int BUFFER_SIZE = 8192;
     private static final String KEEP_FILE = ".keep";
+    private static final String DIRECTORY_SEPARATOR = "/";
+    private static final String ROOT_DIRECTORY = ".";
 
     private final SnapshotStorage storage;
     private final SnapshotMetadataManager metadata;
@@ -131,11 +135,11 @@ public class SnapshotRepository {
                                       SnapshotManifest manifest) {
         E.checkArgument(serverStorage != null, "Server storage can't be null");
         E.checkArgument(manifest != null, "Snapshot manifest can't be null");
-        Set<String> directories = new LinkedHashSet<>();
+        Set<String> paths = new LinkedHashSet<>();
         for (SnapshotFile file : manifest.files()) {
-            directories.add(this.topDirectory(file.path()));
+            paths.add(file.path());
         }
-        directories.forEach(serverStorage::delete);
+        this.deleteSnapshotDirectories(serverStorage, paths);
     }
 
     /**
@@ -145,11 +149,22 @@ public class SnapshotRepository {
      */
     public void cleanupServerSnapshot(SnapshotStorage serverStorage) {
         E.checkArgument(serverStorage != null, "Server storage can't be null");
-        Set<String> directories = new LinkedHashSet<>();
-        for (String path : this.snapshotFiles(serverStorage)) {
-            directories.add(this.topDirectory(path));
+        this.deleteSnapshotDirectories(serverStorage,
+                                       this.snapshotFiles(serverStorage));
+    }
+
+    /**
+     * Delete the directories which directly contain the given snapshot files,
+     * e.g. the directory 'snapshot_rocksdb-data/g' of the file
+     * 'snapshot_rocksdb-data/g/CURRENT'. The top level 'snapshot_*' directory
+     * holds the snapshot directories of all the graphs, so it's only deleted
+     * when a snapshot file is stored in it directly.
+     */
+    private void deleteSnapshotDirectories(SnapshotStorage serverStorage,
+                                           Collection<String> paths) {
+        for (String directory : this.fileDirectories(paths)) {
+            serverStorage.delete(directory);
         }
-        directories.forEach(serverStorage::delete);
     }
 
     public SnapshotManifest select(String backupId) {
@@ -177,7 +192,7 @@ public class SnapshotRepository {
                                        String backupId) {
         SnapshotManifest manifest = this.select(backupId);
         this.verify(manifest);
-        Set<String> snapshotDirectories = this.snapshotDirectories(manifest);
+        String snapshotDirectory = this.snapshotDirectory(manifest);
 
         String stageRoot = RESTORE_TEMP_PREFIX + UUID.randomUUID();
         try {
@@ -187,29 +202,41 @@ public class SnapshotRepository {
                                         serverStorage,
                                         stageRoot + "/" + file.path());
             }
-            for (String directory : snapshotDirectories) {
-                serverStorage.replaceDirectory(stageRoot + "/" + directory,
-                                               directory);
-            }
+            serverStorage.replaceDirectory(stageRoot + "/" + snapshotDirectory,
+                                           snapshotDirectory);
             return manifest;
         } finally {
             serverStorage.delete(stageRoot);
         }
     }
 
-    private Set<String> snapshotDirectories(SnapshotManifest manifest) {
+    /**
+     * Locate the directory which the snapshot files of a backup are stored
+     * in. It's the deepest directory containing all of them, e.g. the
+     * directory 'snapshot_rocksdb-data/g' of the file
+     * 'snapshot_rocksdb-data/g/CURRENT'. The directories above it hold the
+     * snapshot directories of all the graphs, so only the snapshot directory
+     * can be replaced.
+     */
+    private String snapshotDirectory(SnapshotManifest manifest) {
         Set<String> directories = new LinkedHashSet<>();
         for (SnapshotFile file : manifest.files()) {
-            directories.add(this.topDirectory(file.path()));
+            directories.add(this.parentDirectory(file.path()));
         }
         E.checkState(!directories.isEmpty(),
                      "Snapshot '%s' contains no files",
                      manifest.backupId());
-        E.checkState(directories.size() == 1,
+        String directory = null;
+        for (String parent : directories) {
+            directory = directory == null ? parent :
+                        this.commonDirectory(directory, parent);
+        }
+        E.checkState(!ROOT_DIRECTORY.equals(directory) &&
+                     this.topDirectory(directory).startsWith(SNAPSHOT_PREFIX),
                      "Snapshot '%s' contains files from multiple directories " +
                      "%s, replacing them can't be done atomically",
                      manifest.backupId(), directories);
-        return directories;
+        return directory;
     }
 
     private <T> T locked(Supplier<T> action) {
@@ -292,9 +319,52 @@ public class SnapshotRepository {
     }
 
     private String topDirectory(String path) {
-        String normalized = path.replace('\\', '/');
-        int separator = normalized.indexOf('/');
-        return separator < 0 ? normalized : normalized.substring(0, separator);
+        String normalized = this.normalize(path);
+        int separator = normalized.indexOf(DIRECTORY_SEPARATOR);
+        return separator < 0 ? normalized :
+               normalized.substring(0, separator);
+    }
+
+    private String parentDirectory(String path) {
+        String normalized = this.normalize(path);
+        int separator = normalized.lastIndexOf(DIRECTORY_SEPARATOR);
+        return separator < 0 ? ROOT_DIRECTORY :
+               normalized.substring(0, separator);
+    }
+
+    /**
+     * The directories which directly contain the given files, the root
+     * directory isn't included because it can't be a snapshot directory.
+     */
+    private Set<String> fileDirectories(Collection<String> paths) {
+        Set<String> directories = new LinkedHashSet<>();
+        for (String path : paths) {
+            String parent = this.parentDirectory(path);
+            if (!ROOT_DIRECTORY.equals(parent)) {
+                directories.add(parent);
+            }
+        }
+        return directories;
+    }
+
+    private String commonDirectory(String left, String right) {
+        if (left.equals(right)) {
+            return left;
+        }
+        String[] leftParts = left.split(DIRECTORY_SEPARATOR);
+        String[] rightParts = right.split(DIRECTORY_SEPARATOR);
+        int length = Math.min(leftParts.length, rightParts.length);
+        int index = 0;
+        while (index < length && leftParts[index].equals(rightParts[index])) {
+            index++;
+        }
+        return index == 0 ? ROOT_DIRECTORY :
+               String.join(DIRECTORY_SEPARATOR,
+                           Arrays.copyOf(leftParts, index));
+    }
+
+    private String normalize(String path) {
+        return path.replace('\\', '/');
     }
 
     private String newBackupId(SnapshotIndex index) {

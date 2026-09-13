@@ -224,10 +224,12 @@ public class HugeGraphCommand {
                         manager(GraphsManager.class);
                 GraphMode snapshotMode = snapshotGraphsManager.mode(
                                          this.graph());
-                E.checkState(snapshotMode.maintaining(),
+                E.checkState(snapshotMode == GraphMode.RESTORING,
                              "Invalid mode '%s' of graph '%s' for " +
-                             "snapshot-restore sub-command",
-                             snapshotMode, this.graph());
+                             "snapshot-restore sub-command, the graph must " +
+                             "be in '%s' mode because the physical snapshot " +
+                             "replaces its data directory",
+                             snapshotMode, this.graph(), GraphMode.RESTORING);
                 SubCommands.SnapshotRestore snapshotRestore =
                         this.subCommand(subCmd);
                 SnapshotManager snapshotManager = manager(SnapshotManager.class);
