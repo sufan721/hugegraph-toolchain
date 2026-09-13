@@ -253,8 +253,8 @@ public class SubCommands {
 
         @Parameter(names = {"--server-data-root"}, arity = 1,
                    description = "Shared directory containing server RocksDB " +
-                                 "data. Defaults to " +
-                                 "HUGEGRAPH_SERVER_DATA_ROOT or --directory")
+                                 "data, required unless " +
+                                 "HUGEGRAPH_SERVER_DATA_ROOT is set")
         public String serverDataRoot;
 
         public String directory() {

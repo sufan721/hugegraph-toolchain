@@ -17,9 +17,12 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.Files;
@@ -38,6 +41,8 @@ import org.apache.hugegraph.exception.ToolsException;
 import org.apache.hugegraph.util.E;
 
 public class LocalSnapshotStorage implements SnapshotStorage {
+
+    private static final String LOCK_FILE = ".snapshot.lock";
 
     private final Path root;
 
@@ -61,6 +66,31 @@ public class LocalSnapshotStorage implements SnapshotStorage {
             Files.createDirectories(this.root);
         } catch (IOException e) {
             throw new ToolsException("Failed to initialize snapshot storage '%s'",
+                                     e, this.root);
+        }
+    }
+
+    @Override
+    public Closeable lock() {
+        Path lockFile = this.root.resolve(LOCK_FILE);
+        this.ensureParent(lockFile);
+        try {
+            FileChannel channel = FileChannel.open(lockFile,
+                                                   StandardOpenOption.CREATE,
+                                                   StandardOpenOption.WRITE);
+            try {
+                FileLock lock = channel.lock();
+                return new StorageLock(channel, lock);
+            } catch (Throwable e) {
+                try {
+                    channel.close();
+                } catch (IOException closeError) {
+                    e.addSuppressed(closeError);
+                }
+                throw e;
+            }
+        } catch (IOException e) {
+            throw new ToolsException("Failed to lock snapshot storage '%s'",
                                      e, this.root);
         }
     }
@@ -230,6 +260,26 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         } finally {
             if (!preserveBackup && Files.exists(backup)) {
                 this.delete(this.relativePath(backup));
+            }
+        }
+    }
+
+    private static final class StorageLock implements Closeable {
+
+        private final FileChannel channel;
+        private final FileLock lock;
+
+        private StorageLock(FileChannel channel, FileLock lock) {
+            this.channel = channel;
+            this.lock = lock;
+        }
+
+        @Override
+        public void close() throws IOException {
+            try {
+                this.lock.release();
+            } finally {
+                this.channel.close();
             }
         }
     }

@@ -16,6 +16,8 @@
  */
 package org.apache.hugegraph.snapshot;
 
+import java.util.Locale;
+
 import org.apache.hugegraph.util.E;
 
 public enum SnapshotMode {
@@ -24,14 +26,14 @@ public enum SnapshotMode {
     INCREMENTAL;
 
     public String value() {
-        return this.name().toLowerCase();
+        return this.name().toLowerCase(Locale.ROOT);
     }
 
     public static SnapshotMode from(String value) {
         E.checkArgument(value != null && !value.isEmpty(),
                         "Snapshot mode can't be null or empty");
         try {
-            return SnapshotMode.valueOf(value.toUpperCase());
+            return SnapshotMode.valueOf(value.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(String.format(
                       "Invalid snapshot mode '%s', expected full or incremental",

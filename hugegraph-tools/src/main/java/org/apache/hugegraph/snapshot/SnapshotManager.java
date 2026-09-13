@@ -58,9 +58,14 @@ public class SnapshotManager extends ToolManager {
         Printer.print("Graph '%s' start snapshot backup in mode '%s'",
                       this.graph(), this.mode.value());
         this.snapshotClient.createSnapshot();
-        SnapshotManifest manifest = this.repository.backup(
-                                    this.serverStorage, this.mode,
-                                    this.keepNum);
+        SnapshotManifest manifest;
+        try {
+            manifest = this.repository.backup(this.serverStorage, this.mode,
+                                              this.keepNum);
+        } catch (Throwable e) {
+            this.cleanupServerSnapshot(e);
+            throw e;
+        }
         this.repository.cleanupServerSnapshot(this.serverStorage, manifest);
         Printer.print("Snapshot backup '%s' finished: %d files, %d bytes",
                       manifest.backupId(), manifest.files().size(),
@@ -84,10 +89,17 @@ public class SnapshotManager extends ToolManager {
         SnapshotMetadataManager metadata = new SnapshotMetadataManager(
                                             storage, this.graph());
         this.repository = new SnapshotRepository(storage, metadata);
-        this.serverStorage = new LocalSnapshotStorage(serverStorageRoot(
-                                                      directory,
-                                                      serverDataRoot));
+        this.serverStorage = new LocalSnapshotStorage(
+                             serverStorageRoot(serverDataRoot));
         this.snapshotClient = new SnapshotClient(this.client);
+    }
+
+    private void cleanupServerSnapshot(Throwable cause) {
+        try {
+            this.repository.cleanupServerSnapshot(this.serverStorage);
+        } catch (Throwable cleanupError) {
+            cause.addSuppressed(cleanupError);
+        }
     }
 
     private void checkInitialized() {
@@ -95,11 +107,14 @@ public class SnapshotManager extends ToolManager {
                      "Snapshot manager hasn't been initialized");
     }
 
-    private static String serverStorageRoot(String directory,
-                                            String serverDataRoot) {
+    private static String serverStorageRoot(String serverDataRoot) {
         if (StringUtils.isEmpty(serverDataRoot)) {
             serverDataRoot = System.getenv("HUGEGRAPH_SERVER_DATA_ROOT");
         }
-        return StringUtils.isEmpty(serverDataRoot) ? directory : serverDataRoot;
+        E.checkArgument(StringUtils.isNotEmpty(serverDataRoot),
+                        "The server data root is required to locate the " +
+                        "RocksDB snapshot files, please specify " +
+                        "--server-data-root or set HUGEGRAPH_SERVER_DATA_ROOT");
+        return serverDataRoot;
     }
 }

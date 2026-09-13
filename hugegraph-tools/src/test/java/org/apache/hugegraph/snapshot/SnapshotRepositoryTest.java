@@ -118,6 +118,40 @@ public class SnapshotRepositoryTest {
     }
 
     @Test
+    public void testSnapshotSpanningDirectoriesIsRejected() {
+        this.writeServerFile("CURRENT", "content");
+        this.serverStorage.write("snapshot_other/CURRENT",
+                                 "other".getBytes(StandardCharsets.UTF_8),
+                                 true);
+        SnapshotManifest manifest = this.repository.backup(
+                                     this.serverStorage, SnapshotMode.FULL, 0);
+        Assert.assertEquals(2, manifest.files().size());
+
+        try {
+            this.repository.restore(this.serverStorage, manifest.backupId());
+            Assert.fail("Expected the multi-directory snapshot to be rejected");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("multiple directories"));
+        }
+        Assert.assertEquals("content", this.readServerFile("CURRENT"));
+        Assert.assertEquals("other", this.readServerFile("snapshot_other",
+                                                         "CURRENT"));
+    }
+
+    @Test
+    public void testCleanupServerSnapshotWithoutManifest() {
+        this.writeServerFile("CURRENT", "content");
+        this.serverStorage.write("snapshot_other/CURRENT",
+                                 "other".getBytes(StandardCharsets.UTF_8),
+                                 true);
+
+        this.repository.cleanupServerSnapshot(this.serverStorage);
+
+        Assert.assertFalse(this.serverStorage.exists(SNAPSHOT_DIR));
+        Assert.assertFalse(this.serverStorage.exists("snapshot_other"));
+    }
+
+    @Test
     public void testCorruptBlobIsDetected() {
         this.writeServerFile("CURRENT", "content");
         SnapshotManifest manifest = this.repository.backup(
@@ -152,7 +186,11 @@ public class SnapshotRepositoryTest {
     }
 
     private String readServerFile(String name) {
-        byte[] content = this.serverStorage.read(SNAPSHOT_DIR + "/" + name);
+        return this.readServerFile(SNAPSHOT_DIR, name);
+    }
+
+    private String readServerFile(String directory, String name) {
+        byte[] content = this.serverStorage.read(directory + "/" + name);
         return new String(content, StandardCharsets.UTF_8);
     }
 }

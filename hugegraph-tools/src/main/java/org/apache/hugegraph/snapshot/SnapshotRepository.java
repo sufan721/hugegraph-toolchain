@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -31,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import org.apache.hugegraph.exception.ToolsException;
 import org.apache.hugegraph.util.E;
@@ -62,7 +64,13 @@ public class SnapshotRepository {
         E.checkArgument(serverStorage != null, "Server storage can't be null");
         E.checkArgument(requestedMode != null, "Snapshot mode can't be null");
         E.checkArgument(keepNum >= 0, "Snapshot keep number can't be negative");
+        return this.locked(() -> this.doBackup(serverStorage, requestedMode,
+                                               keepNum));
+    }
 
+    private SnapshotManifest doBackup(SnapshotStorage serverStorage,
+                                      SnapshotMode requestedMode,
+                                      int keepNum) {
         SnapshotIndex index = this.metadata.loadIndex();
         SnapshotVersion parent = this.metadata.latestValid();
         SnapshotMode mode = requestedMode;
@@ -130,6 +138,20 @@ public class SnapshotRepository {
         directories.forEach(serverStorage::delete);
     }
 
+    /**
+     * Delete all the snapshot directories of the server storage, it's used to
+     * discard the snapshot files of a backup which has failed before a
+     * manifest could be built.
+     */
+    public void cleanupServerSnapshot(SnapshotStorage serverStorage) {
+        E.checkArgument(serverStorage != null, "Server storage can't be null");
+        Set<String> directories = new LinkedHashSet<>();
+        for (String path : this.snapshotFiles(serverStorage)) {
+            directories.add(this.topDirectory(path));
+        }
+        directories.forEach(serverStorage::delete);
+    }
+
     public SnapshotManifest select(String backupId) {
         if (backupId == null || backupId.isEmpty() ||
             "latest".equalsIgnoreCase(backupId)) {
@@ -148,23 +170,23 @@ public class SnapshotRepository {
     public SnapshotManifest restore(SnapshotStorage serverStorage,
                                     String backupId) {
         E.checkArgument(serverStorage != null, "Server storage can't be null");
+        return this.locked(() -> this.doRestore(serverStorage, backupId));
+    }
+
+    private SnapshotManifest doRestore(SnapshotStorage serverStorage,
+                                       String backupId) {
         SnapshotManifest manifest = this.select(backupId);
         this.verify(manifest);
+        Set<String> snapshotDirectories = this.snapshotDirectories(manifest);
 
         String stageRoot = RESTORE_TEMP_PREFIX + UUID.randomUUID();
-        Set<String> snapshotDirectories = new LinkedHashSet<>();
         try {
             for (SnapshotFile file : manifest.files()) {
-                String topDirectory = this.topDirectory(file.path());
-                snapshotDirectories.add(topDirectory);
                 this.copyFromRepository(this.metadata.blobPath(
                                         file.checksum()),
                                         serverStorage,
                                         stageRoot + "/" + file.path());
             }
-            E.checkState(!snapshotDirectories.isEmpty(),
-                         "Snapshot '%s' contains no files",
-                         manifest.backupId());
             for (String directory : snapshotDirectories) {
                 serverStorage.replaceDirectory(stageRoot + "/" + directory,
                                                directory);
@@ -172,6 +194,30 @@ public class SnapshotRepository {
             return manifest;
         } finally {
             serverStorage.delete(stageRoot);
+        }
+    }
+
+    private Set<String> snapshotDirectories(SnapshotManifest manifest) {
+        Set<String> directories = new LinkedHashSet<>();
+        for (SnapshotFile file : manifest.files()) {
+            directories.add(this.topDirectory(file.path()));
+        }
+        E.checkState(!directories.isEmpty(),
+                     "Snapshot '%s' contains no files",
+                     manifest.backupId());
+        E.checkState(directories.size() == 1,
+                     "Snapshot '%s' contains files from multiple directories " +
+                     "%s, replacing them can't be done atomically",
+                     manifest.backupId(), directories);
+        return directories;
+    }
+
+    private <T> T locked(Supplier<T> action) {
+        try (Closeable lock = this.storage.lock()) {
+            return action.get();
+        } catch (IOException e) {
+            throw new ToolsException("Failed to unlock snapshot repository '%s'",
+                                     e, this.storage.root());
         }
     }
 

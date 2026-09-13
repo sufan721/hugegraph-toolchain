@@ -16,6 +16,7 @@
  */
 package org.apache.hugegraph.snapshot;
 
+import java.io.Closeable;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
@@ -25,6 +26,14 @@ public interface SnapshotStorage {
     String root();
 
     void initialize();
+
+    /**
+     * Acquire an exclusive lock on the storage, blocking until it's
+     * available. The lock is shared between processes, so it can be used to
+     * serialize the operations which read and write the same storage.
+     * The caller must close the returned instance to release the lock.
+     */
+    Closeable lock();
 
     boolean exists(String path);
 
