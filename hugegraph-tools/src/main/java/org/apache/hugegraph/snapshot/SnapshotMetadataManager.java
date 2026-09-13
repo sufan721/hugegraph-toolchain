@@ -136,11 +136,7 @@ public class SnapshotMetadataManager {
         if (versions.isEmpty()) {
             return null;
         }
-        versions.sort((left, right) -> {
-            int result = Long.compare(left.createdAt(), right.createdAt());
-            return result != 0 ? result :
-                   left.backupId().compareTo(right.backupId());
-        });
+        versions.sort(SnapshotVersion.BY_CREATION);
         return versions.get(versions.size() - 1);
     }
 

@@ -17,7 +17,18 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.util.Comparator;
+
 public class SnapshotVersion {
+
+    /**
+     * Orders versions by creation time ascending, breaking ties by backup id
+     * so that the ordering is deterministic even for same-timestamp versions.
+     */
+    public static final Comparator<SnapshotVersion> BY_CREATION = (left, right) -> {
+        int result = Long.compare(left.createdAt(), right.createdAt());
+        return result != 0 ? result : left.backupId().compareTo(right.backupId());
+    };
 
     private String backupId;
     private long createdAt;

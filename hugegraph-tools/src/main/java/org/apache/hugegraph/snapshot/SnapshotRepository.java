@@ -46,7 +46,6 @@ public class SnapshotRepository {
     private static final DateTimeFormatter BACKUP_ID_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
                              .withZone(ZoneId.systemDefault());
-    private static final int BUFFER_SIZE = 8192;
     private static final String KEEP_FILE = ".keep";
     private static final String DIRECTORY_SEPARATOR = "/";
     private static final String ROOT_DIRECTORY = ".";
@@ -271,11 +270,7 @@ public class SnapshotRepository {
         if (versions.size() <= keepNum) {
             return;
         }
-        versions.sort((left, right) -> {
-            int result = Long.compare(left.createdAt(), right.createdAt());
-            return result != 0 ? result :
-                   left.backupId().compareTo(right.backupId());
-        });
+        versions.sort(SnapshotVersion.BY_CREATION);
         List<SnapshotVersion> keptVersions = versions.subList(
                                              versions.size() - keepNum,
                                              versions.size());
@@ -426,10 +421,6 @@ public class SnapshotRepository {
 
     private void copy(InputStream input, OutputStream output)
             throws IOException {
-        byte[] buffer = new byte[BUFFER_SIZE];
-        int length;
-        while ((length = input.read(buffer)) >= 0) {
-            output.write(buffer, 0, length);
-        }
+        input.transferTo(output);
     }
 }

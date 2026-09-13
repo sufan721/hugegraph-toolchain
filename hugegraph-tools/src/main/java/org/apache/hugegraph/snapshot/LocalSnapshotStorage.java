@@ -181,7 +181,7 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         Path target = this.resolve(targetPath);
         this.ensureParent(target);
         try {
-            this.move(source, target, replace);
+            this.moveInternal(source, target, replace);
         } catch (IOException e) {
             throw new ToolsException("Failed to move '%s' to '%s'",
                                      e, sourcePath, targetPath);
@@ -231,10 +231,10 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         try {
             this.ensureParent(backup);
             if (Files.exists(target)) {
-                this.move(target, backup, false);
+                this.moveInternal(target, backup, false);
                 movedOld = true;
             }
-            this.move(source, target, false);
+            this.moveInternal(source, target, false);
             movedNew = true;
             if (movedOld) {
                 this.delete(this.relativePath(backup));
@@ -249,7 +249,7 @@ public class LocalSnapshotStorage implements SnapshotStorage {
             }
             if (movedOld && Files.exists(backup)) {
                 try {
-                    this.move(backup, target, false);
+                    this.moveInternal(backup, target, false);
                 } catch (IOException rollbackError) {
                     preserveBackup = true;
                     e.addSuppressed(rollbackError);
@@ -310,7 +310,7 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         }
     }
 
-    private void move(Path source, Path target, boolean replace)
+    private void moveInternal(Path source, Path target, boolean replace)
             throws IOException {
         try {
             Files.move(source, target, moveOptions(replace));
