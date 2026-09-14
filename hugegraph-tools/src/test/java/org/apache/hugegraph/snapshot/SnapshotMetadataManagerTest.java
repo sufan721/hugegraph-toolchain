@@ -65,6 +65,24 @@ public class SnapshotMetadataManagerTest {
         Assert.assertEquals("blobs/hash", metadata.blobPath("hash"));
     }
 
+    @Test
+    public void testIndexRejectsTamperedGraph() throws Exception {
+        SnapshotStorage storage = new LocalSnapshotStorage(
+                temporary.newFolder().toPath());
+        SnapshotMetadataManager metadata = new SnapshotMetadataManager(
+                storage, "g");
+        storage.write(SnapshotMetadataManager.INDEX_FILE,
+                      "{\"formatVersion\":1,\"graph\":\"other\",\"versions\":[]}"
+                      .getBytes(StandardCharsets.UTF_8), true);
+
+        try {
+            metadata.loadIndex();
+            Assert.fail("Expected a tampered index graph to be rejected");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("doesn't match"));
+        }
+    }
+
     @Test(expected = IllegalStateException.class)
     public void testManifestRejectsInvalidChecksum() throws Exception {
         SnapshotStorage storage = new LocalSnapshotStorage(

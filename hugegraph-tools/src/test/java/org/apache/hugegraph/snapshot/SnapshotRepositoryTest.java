@@ -17,9 +17,14 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.io.Closeable;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.hugegraph.exception.ToolsException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -47,7 +52,7 @@ public class SnapshotRepositoryTest {
         this.repositoryStorage = new LocalSnapshotStorage(repositoryRoot);
         this.serverStorage = new LocalSnapshotStorage(serverRoot);
         this.metadata = new SnapshotMetadataManager(this.repositoryStorage,
-                                                     "hugegraph");
+                                                     "g");
         this.repository = new SnapshotRepository(this.repositoryStorage,
                                                   this.metadata);
     }
@@ -120,37 +125,37 @@ public class SnapshotRepositoryTest {
     }
 
     @Test
-    public void testSnapshotSpanningDirectoriesIsRejected() {
+    public void testBackupIgnoresOtherGraphSnapshotsInSharedDataRoot() {
         this.writeServerFile("CURRENT", "content");
-        this.serverStorage.write("snapshot_other/graph/CURRENT",
+        this.serverStorage.write("snapshot_rocksdb-data/other/CURRENT",
                                  "other".getBytes(StandardCharsets.UTF_8),
                                  true);
         SnapshotManifest manifest = this.repository.backup(
                                      this.serverStorage, SnapshotMode.FULL, 0);
-        Assert.assertEquals(2, manifest.files().size());
+        Assert.assertEquals(1, manifest.files().size());
 
-        try {
-            this.repository.restore(this.serverStorage, manifest.backupId());
-            Assert.fail("Expected the multi-directory snapshot to be rejected");
-        } catch (IllegalStateException e) {
-            Assert.assertTrue(e.getMessage().contains("multiple directories"));
-        }
+        this.writeServerFile("CURRENT", "dirty");
+        this.serverStorage.write("snapshot_rocksdb-data/other/CURRENT",
+                                 "other-dirty".getBytes(StandardCharsets.UTF_8),
+                                 true);
+        this.repository.restore(this.serverStorage, manifest.backupId());
+
         Assert.assertEquals("content", this.readServerFile("CURRENT"));
-        Assert.assertEquals("other", this.readServerFile("snapshot_other/graph",
-                                                         "CURRENT"));
+        Assert.assertEquals("other-dirty", this.readServerFile(
+                            "snapshot_rocksdb-data/other", "CURRENT"));
     }
 
     @Test
     public void testCleanupServerSnapshotWithoutManifest() {
         this.writeServerFile("CURRENT", "content");
-        this.serverStorage.write("snapshot_other/graph/CURRENT",
+        this.serverStorage.write("snapshot_rocksdb-index/g/CURRENT",
                                  "other".getBytes(StandardCharsets.UTF_8),
                                  true);
 
         this.repository.cleanupServerSnapshot(this.serverStorage);
 
         Assert.assertFalse(this.serverStorage.exists(SNAPSHOT_DIR));
-        Assert.assertFalse(this.serverStorage.exists("snapshot_other/graph"));
+        Assert.assertFalse(this.serverStorage.exists("snapshot_rocksdb-index/g"));
     }
 
     @Test
@@ -184,6 +189,29 @@ public class SnapshotRepositoryTest {
     }
 
     @Test
+    public void testRestoreReplacesAllSnapshotDirectoriesOfOneGraph() {
+        this.writeServerFile("CURRENT", "graph-v1");
+        this.serverStorage.write("snapshot_rocksdb-index/g/CURRENT",
+                                 "index-v1".getBytes(StandardCharsets.UTF_8),
+                                 true);
+        SnapshotManifest manifest = this.repository.backup(
+                                    this.serverStorage, SnapshotMode.FULL, 0);
+
+        this.writeServerFile("CURRENT", "dirty-graph");
+        this.serverStorage.write("snapshot_rocksdb-index/g/CURRENT",
+                                 "dirty-index".getBytes(StandardCharsets.UTF_8),
+                                 true);
+        this.writeOtherGraphFile("CURRENT", "other");
+
+        this.repository.restore(this.serverStorage, manifest.backupId());
+
+        Assert.assertEquals("graph-v1", this.readServerFile("CURRENT"));
+        Assert.assertEquals("index-v1", this.readServerFile(
+                            "snapshot_rocksdb-index/g", "CURRENT"));
+        Assert.assertEquals("other", this.readOtherGraphFile("CURRENT"));
+    }
+
+    @Test
     public void testCorruptBlobIsDetected() {
         this.writeServerFile("CURRENT", "content");
         SnapshotManifest manifest = this.repository.backup(
@@ -200,6 +228,72 @@ public class SnapshotRepositoryTest {
         } catch (RuntimeException e) {
             Assert.assertTrue(e.getMessage().contains("invalid checksum"));
         }
+    }
+
+    @Test
+    public void testInterruptedBackupCleansTemporaryFilesAndCanRetry()
+            throws Exception {
+        Path repositoryRoot = this.temporary.newFolder("failing-repository")
+                                  .toPath();
+        FailingSnapshotStorage storage = new FailingSnapshotStorage(repositoryRoot);
+        SnapshotMetadataManager metadata = new SnapshotMetadataManager(storage, "g");
+        SnapshotRepository failingRepository = new SnapshotRepository(storage, metadata);
+        this.writeServerFile("CURRENT", "content");
+
+        try {
+            failingRepository.backup(this.serverStorage, SnapshotMode.FULL, 0);
+            Assert.fail("Expected the injected repository write to fail");
+        } catch (ToolsException e) {
+            Assert.assertTrue(e.getMessage().contains("injected"));
+        }
+        Assert.assertEquals(1, storage.listFiles(".tmp", true).size());
+
+        storage.failWrites(false);
+        SnapshotManifest manifest = failingRepository.backup(this.serverStorage,
+                                                              SnapshotMode.FULL, 0);
+        Assert.assertNotNull(manifest);
+        Assert.assertEquals(1, metadata.loadIndex().versions().size());
+    }
+
+    @Test
+    public void testRepositoryLockSerializesConcurrentOperations()
+            throws Exception {
+        LocalSnapshotStorage storage = new LocalSnapshotStorage(
+                                       this.temporary.newFolder("locked")
+                                                     .toPath());
+        CountDownLatch waiting = new CountDownLatch(1);
+        CountDownLatch acquired = new CountDownLatch(1);
+        try (Closeable ignored = storage.lock()) {
+            Thread thread = new Thread(() -> {
+                waiting.countDown();
+                try (Closeable lock = storage.lock()) {
+                    acquired.countDown();
+                } catch (Exception e) {
+                    throw new AssertionError(e);
+                }
+            });
+            thread.start();
+            Assert.assertTrue(waiting.await(1, TimeUnit.SECONDS));
+            Assert.assertFalse(acquired.await(200, TimeUnit.MILLISECONDS));
+        }
+        Assert.assertTrue(acquired.await(1, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void testDataRootSupportsSpacesAndUnicode() throws Exception {
+        SnapshotStorage unicodeServer = new LocalSnapshotStorage(
+                this.temporary.newFolder("data root 中文").toPath());
+        unicodeServer.write("snapshot_rocksdb-data/g/CURRENT",
+                            "content".getBytes(StandardCharsets.UTF_8), true);
+
+        SnapshotManifest manifest = this.repository.backup(unicodeServer,
+                                                            SnapshotMode.FULL, 0);
+        unicodeServer.delete("snapshot_rocksdb-data/g");
+        this.repository.restore(unicodeServer, manifest.backupId());
+
+        Assert.assertEquals("content", new String(unicodeServer.read(
+                            "snapshot_rocksdb-data/g/CURRENT"),
+                            StandardCharsets.UTF_8));
     }
 
     private SnapshotFile file(SnapshotManifest manifest, String suffix) {
@@ -234,5 +328,26 @@ public class SnapshotRepositoryTest {
     private String readServerFile(String directory, String name) {
         byte[] content = this.serverStorage.read(directory + "/" + name);
         return new String(content, StandardCharsets.UTF_8);
+    }
+
+    private static class FailingSnapshotStorage extends LocalSnapshotStorage {
+
+        private boolean failWrites = true;
+
+        FailingSnapshotStorage(Path root) {
+            super(root);
+        }
+
+        @Override
+        public OutputStream output(String path, boolean override) {
+            if (this.failWrites && path.startsWith(".tmp/blob-")) {
+                throw new ToolsException("injected repository write failure");
+            }
+            return super.output(path, override);
+        }
+
+        public void failWrites(boolean failWrites) {
+            this.failWrites = failWrites;
+        }
     }
 }

@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -41,7 +40,7 @@ import org.apache.hugegraph.util.E;
 
 public class SnapshotRepository {
 
-    private static final String SNAPSHOT_PREFIX = "snapshot_";
+    private static final String ROCKSDB_SNAPSHOT_PREFIX = "snapshot_rocksdb-";
     private static final String RESTORE_TEMP_PREFIX = ".snapshot-restore-";
     private static final DateTimeFormatter BACKUP_ID_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
@@ -191,7 +190,7 @@ public class SnapshotRepository {
                                        String backupId) {
         SnapshotManifest manifest = this.select(backupId);
         this.verify(manifest);
-        String snapshotDirectory = this.snapshotDirectory(manifest);
+        Set<String> snapshotDirectories = this.snapshotDirectories(manifest);
 
         String stageRoot = RESTORE_TEMP_PREFIX + UUID.randomUUID();
         try {
@@ -201,8 +200,10 @@ public class SnapshotRepository {
                                         serverStorage,
                                         stageRoot + "/" + file.path());
             }
-            serverStorage.replaceDirectory(stageRoot + "/" + snapshotDirectory,
-                                           snapshotDirectory);
+            for (String snapshotDirectory : snapshotDirectories) {
+                serverStorage.replaceDirectory(stageRoot + "/" + snapshotDirectory,
+                                               snapshotDirectory);
+            }
             return manifest;
         } finally {
             serverStorage.delete(stageRoot);
@@ -210,14 +211,12 @@ public class SnapshotRepository {
     }
 
     /**
-     * Locate the directory which the snapshot files of a backup are stored
-     * in. It's the deepest directory containing all of them, e.g. the
-     * directory 'snapshot_rocksdb-data/g' of the file
-     * 'snapshot_rocksdb-data/g/CURRENT'. The directories above it hold the
-     * snapshot directories of all the graphs, so only the snapshot directory
-     * can be replaced.
+     * Locate all RocksDB graph directories which hold the snapshot files.
+     * A graph can use multiple RocksDB data roots, and each graph directory
+     * is replaced independently while snapshots belonging to other graphs
+     * remain in place.
      */
-    private String snapshotDirectory(SnapshotManifest manifest) {
+    private Set<String> snapshotDirectories(SnapshotManifest manifest) {
         Set<String> directories = new LinkedHashSet<>();
         for (SnapshotFile file : manifest.files()) {
             directories.add(this.parentDirectory(file.path()));
@@ -225,17 +224,15 @@ public class SnapshotRepository {
         E.checkState(!directories.isEmpty(),
                      "Snapshot '%s' contains no files",
                      manifest.backupId());
-        String directory = null;
-        for (String parent : directories) {
-            directory = directory == null ? parent :
-                        this.commonDirectory(directory, parent);
+        for (String directory : directories) {
+            E.checkState(!ROOT_DIRECTORY.equals(directory) &&
+                         this.topDirectory(directory).startsWith(
+                         ROCKSDB_SNAPSHOT_PREFIX),
+                         "Snapshot '%s' contains files from multiple directories " +
+                         "%s, replacing them can't be done atomically",
+                         manifest.backupId(), directories);
         }
-        E.checkState(!ROOT_DIRECTORY.equals(directory) &&
-                     this.topDirectory(directory).startsWith(SNAPSHOT_PREFIX),
-                     "Snapshot '%s' contains files from multiple directories " +
-                     "%s, replacing them can't be done atomically",
-                     manifest.backupId(), directories);
-        return directory;
+        return directories;
     }
 
     private <T> T locked(Supplier<T> action) {
@@ -305,12 +302,21 @@ public class SnapshotRepository {
     private List<String> snapshotFiles(SnapshotStorage serverStorage) {
         List<String> files = new ArrayList<>();
         for (String path : serverStorage.listFiles(".", true)) {
-            if (this.topDirectory(path).startsWith(SNAPSHOT_PREFIX)) {
+            if (this.isGraphSnapshotPath(path)) {
                 files.add(path);
             }
         }
         Collections.sort(files);
         return files;
+    }
+
+    private boolean isGraphSnapshotPath(String path) {
+        String normalized = this.normalize(path);
+        String topDirectory = this.topDirectory(normalized);
+        return topDirectory.startsWith(ROCKSDB_SNAPSHOT_PREFIX) &&
+               normalized.startsWith(topDirectory + DIRECTORY_SEPARATOR +
+                                     this.metadata.graph() +
+                                     DIRECTORY_SEPARATOR);
     }
 
     private String topDirectory(String path) {
@@ -340,22 +346,6 @@ public class SnapshotRepository {
             }
         }
         return directories;
-    }
-
-    private String commonDirectory(String left, String right) {
-        if (left.equals(right)) {
-            return left;
-        }
-        String[] leftParts = left.split(DIRECTORY_SEPARATOR);
-        String[] rightParts = right.split(DIRECTORY_SEPARATOR);
-        int length = Math.min(leftParts.length, rightParts.length);
-        int index = 0;
-        while (index < length && leftParts[index].equals(rightParts[index])) {
-            index++;
-        }
-        return index == 0 ? ROOT_DIRECTORY :
-               String.join(DIRECTORY_SEPARATOR,
-                           Arrays.copyOf(leftParts, index));
     }
 
     private String normalize(String path) {

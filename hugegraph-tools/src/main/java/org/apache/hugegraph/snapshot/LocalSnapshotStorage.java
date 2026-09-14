@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.Files;
@@ -79,7 +80,7 @@ public class LocalSnapshotStorage implements SnapshotStorage {
                                                    StandardOpenOption.CREATE,
                                                    StandardOpenOption.WRITE);
             try {
-                FileLock lock = channel.lock();
+                FileLock lock = this.acquireLock(channel);
                 return new StorageLock(channel, lock);
             } catch (Throwable e) {
                 try {
@@ -92,6 +93,25 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         } catch (IOException e) {
             throw new ToolsException("Failed to lock snapshot storage '%s'",
                                      e, this.root);
+        }
+    }
+
+    private FileLock acquireLock(FileChannel channel) throws IOException {
+        while (true) {
+            try {
+                FileLock lock = channel.tryLock();
+                if (lock != null) {
+                    return lock;
+                }
+            } catch (OverlappingFileLockException ignored) {
+                // Another thread in this JVM owns the repository lock.
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while waiting for snapshot lock", e);
+            }
         }
     }
 
@@ -326,17 +346,17 @@ public class LocalSnapshotStorage implements SnapshotStorage {
 
     private static StandardOpenOption[] options(boolean override) {
         return override ? new StandardOpenOption[]{
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING
+            StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+            StandardOpenOption.TRUNCATE_EXISTING
         } : new StandardOpenOption[]{
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE
+            StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE
         };
     }
 
     private static CopyOption[] moveOptions(boolean replace) {
         return replace ? new CopyOption[]{
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING
         } : new CopyOption[]{StandardCopyOption.ATOMIC_MOVE};
     }
 }
