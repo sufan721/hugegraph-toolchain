@@ -18,9 +18,9 @@
 package org.apache.hugegraph.snapshot;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 import org.junit.Assert;
 import org.junit.Assume;
@@ -28,47 +28,31 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-public class SnapshotManagerTest {
+public class LocalSnapshotStorageTest {
 
     @Rule
     public TemporaryFolder temporary = new TemporaryFolder();
 
     @Test
-    public void testGraphRootResolvesInsideSnapshotDirectory() {
-        Path root = Paths.get("./backup").toAbsolutePath().normalize();
-        Assert.assertEquals(root.resolve("hugegraph"),
-                            SnapshotManager.graphRoot("./backup", "hugegraph"));
-    }
-
-    @Test
-    public void testGraphRootRejectsEscapingGraphName() {
-        this.assertRejected("../escape", "Invalid graph name");
-        this.assertRejected("../../etc", "Invalid graph name");
-        this.assertRejected("/escape", "Invalid graph name");
-    }
-
-    @Test
-    public void testGraphRootRejectsEmptyGraphName() {
-        this.assertRejected("", "Graph name can't be null or empty");
-    }
-
-    @Test
-    public void testGraphRootRejectsSymbolicLink() throws Exception {
+    public void testWriteRejectsSymbolicLinkPathComponent() throws Exception {
         Path root = this.temporary.newFolder("root").toPath();
         Path outside = this.temporary.newFolder("outside").toPath();
-        Path link = root.resolve("linked-graph");
+        Path link = root.resolve("linked-directory");
         this.createSymbolicLink(link, outside);
+        LocalSnapshotStorage storage = new LocalSnapshotStorage(root);
 
         try {
-            SnapshotManager.graphRoot(root.toString(), "linked-graph");
-            Assert.fail("Expected a symbolic-link graph directory to be rejected");
+            storage.write("linked-directory/escaped", "data".getBytes(
+                          StandardCharsets.UTF_8), true);
+            Assert.fail("Expected a symbolic-link storage path to be rejected");
         } catch (IllegalStateException e) {
             Assert.assertTrue(e.getMessage().contains("symbolic link"));
         }
+        Assert.assertFalse(Files.exists(outside.resolve("escaped")));
     }
 
     @Test
-    public void testGraphRootRejectsSymbolicLinkBeforeCreatingRoot()
+    public void testInitializeRejectsSymbolicLinkBeforeCreatingRoot()
             throws Exception {
         Path outside = this.temporary.newFolder("outside").toPath();
         Path link = this.temporary.getRoot().toPath().resolve("linked-root");
@@ -76,21 +60,12 @@ public class SnapshotManagerTest {
         Path root = link.resolve("snapshot-root");
 
         try {
-            SnapshotManager.graphRoot(root.toString(), "test-graph");
-            Assert.fail("Expected a symbolic-link snapshot root to be rejected");
+            new LocalSnapshotStorage(root).initialize();
+            Assert.fail("Expected a symbolic-link storage root to be rejected");
         } catch (IllegalStateException e) {
             Assert.assertTrue(e.getMessage().contains("symbolic link"));
         }
         Assert.assertFalse(Files.exists(outside.resolve("snapshot-root")));
-    }
-
-    private void assertRejected(String graph, String message) {
-        try {
-            SnapshotManager.graphRoot("./backup", graph);
-            Assert.fail("Expected the graph name '" + graph + "' to be rejected");
-        } catch (IllegalArgumentException e) {
-            Assert.assertTrue(e.getMessage().contains(message));
-        }
     }
 
     private void createSymbolicLink(Path link, Path target) throws IOException {

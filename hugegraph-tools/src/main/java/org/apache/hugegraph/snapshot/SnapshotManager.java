@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.snapshot;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -25,6 +26,7 @@ import org.apache.hugegraph.base.Printer;
 import org.apache.hugegraph.base.ToolClient;
 import org.apache.hugegraph.base.ToolManager;
 import org.apache.hugegraph.cmd.SubCommands;
+import org.apache.hugegraph.exception.ToolsException;
 import org.apache.hugegraph.util.E;
 
 public class SnapshotManager extends ToolManager {
@@ -108,6 +110,18 @@ public class SnapshotManager extends ToolManager {
                         "Invalid graph name '%s', it must resolve to a " +
                         "directory inside the snapshot directory '%s'",
                         graph, root);
+        try {
+            LocalSnapshotStorage.checkNoSymbolicLinks(root);
+            java.nio.file.Files.createDirectories(root);
+            LocalSnapshotStorage.checkNoSymbolicLinks(graphRoot);
+            E.checkState(graphRoot.getParent().toRealPath().startsWith(
+                         root.toRealPath()),
+                         "Invalid graph name '%s', it resolves outside " +
+                         "the snapshot directory '%s'", graph, root);
+        } catch (IOException e) {
+            throw new ToolsException("Failed to resolve snapshot directory '%s'",
+                                     e, directory);
+        }
         return graphRoot;
     }
 

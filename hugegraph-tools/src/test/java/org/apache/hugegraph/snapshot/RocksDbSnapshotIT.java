@@ -25,6 +25,7 @@ import org.apache.hugegraph.driver.SchemaManager;
 import org.apache.hugegraph.structure.constant.GraphMode;
 import org.apache.hugegraph.structure.graph.Edge;
 import org.apache.hugegraph.structure.graph.Vertex;
+import org.apache.hugegraph.util.E;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -44,7 +45,6 @@ public class RocksDbSnapshotIT {
     private static final String URL = "HUGEGRAPH_SNAPSHOT_IT_URL";
     private static final String GRAPH = "HUGEGRAPH_SNAPSHOT_IT_GRAPH";
     private static final String DEFAULT_URL = "http://127.0.0.1:8080";
-    private static final String DEFAULT_GRAPH = "hugegraph";
     private static final String PERSON = "snapshot_it_person";
     private static final String KNOWS = "snapshot_it_knows";
 
@@ -55,6 +55,7 @@ public class RocksDbSnapshotIT {
     private SnapshotRepository repository;
     private SnapshotStorage serverStorage;
     private String graph;
+    private GraphMode originalGraphMode;
 
     @Before
     public void setup() throws Exception {
@@ -64,10 +65,13 @@ public class RocksDbSnapshotIT {
         Assume.assumeTrue("Set " + DATA_ROOT + " to the real Server data root",
                           dataRoot != null && !dataRoot.isEmpty());
 
-        this.graph = this.value(GRAPH, DEFAULT_GRAPH);
+        this.graph = System.getenv(GRAPH);
+        E.checkArgument(this.graph != null && !this.graph.isEmpty(),
+                        "Set %s to an isolated integration-test graph", GRAPH);
         this.client = new ToolClient(new ToolClient.ConnectionInfo(
                       this.value(URL, DEFAULT_URL), this.graph, null, null,
                       60, null, null));
+        this.originalGraphMode = this.client.graphs().mode(this.graph);
         SnapshotStorage repositoryStorage = new LocalSnapshotStorage(
                                               this.temporary.newFolder("backup")
                                                             .toPath());
@@ -82,7 +86,9 @@ public class RocksDbSnapshotIT {
     @After
     public void teardown() {
         if (this.client != null) {
-            this.client.graphs().mode(this.graph, GraphMode.NONE);
+            if (this.originalGraphMode != null) {
+                this.client.graphs().mode(this.graph, this.originalGraphMode);
+            }
             this.client.close();
         }
     }
@@ -146,7 +152,7 @@ public class RocksDbSnapshotIT {
         this.client.graphs().mode(this.graph, GraphMode.RESTORING);
         this.repository.restore(this.serverStorage, backupId);
         this.client.graphs().resumeSnapshot(this.graph);
-        this.client.graphs().mode(this.graph, GraphMode.NONE);
+        this.client.graphs().mode(this.graph, this.originalGraphMode);
     }
 
     private void createSchema() {

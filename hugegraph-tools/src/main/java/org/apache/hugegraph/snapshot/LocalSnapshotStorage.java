@@ -27,6 +27,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -63,17 +64,12 @@ public class LocalSnapshotStorage implements SnapshotStorage {
 
     @Override
     public void initialize() {
-        try {
-            Files.createDirectories(this.root);
-        } catch (IOException e) {
-            throw new ToolsException("Failed to initialize snapshot storage '%s'",
-                                     e, this.root);
-        }
+        this.rootRealPath();
     }
 
     @Override
     public Closeable lock() {
-        Path lockFile = this.root.resolve(LOCK_FILE);
+        Path lockFile = this.resolve(LOCK_FILE);
         this.ensureParent(lockFile);
         try {
             FileChannel channel = FileChannel.open(lockFile,
@@ -314,6 +310,18 @@ public class LocalSnapshotStorage implements SnapshotStorage {
         E.checkState(resolved.startsWith(this.root),
                      "Snapshot path '%s' escapes storage root '%s'",
                      path, this.root);
+        Path rootRealPath = this.rootRealPath();
+        checkNoSymbolicLinks(resolved);
+        if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
+            try {
+                E.checkState(resolved.toRealPath().startsWith(rootRealPath),
+                             "Snapshot path '%s' escapes storage root '%s'",
+                             path, this.root);
+            } catch (IOException e) {
+                throw new ToolsException("Failed to resolve snapshot path '%s'",
+                                         e, path);
+            }
+        }
         return resolved;
     }
 
@@ -323,10 +331,39 @@ public class LocalSnapshotStorage implements SnapshotStorage {
 
     private void ensureParent(Path target) {
         try {
+            checkNoSymbolicLinks(target.getParent());
             Files.createDirectories(target.getParent());
+            Path rootRealPath = this.rootRealPath();
+            checkNoSymbolicLinks(target.getParent());
+            E.checkState(target.getParent().toRealPath().startsWith(rootRealPath),
+                         "Snapshot path '%s' escapes storage root '%s'",
+                         target, this.root);
         } catch (IOException e) {
             throw new ToolsException("Failed to create parent directory for '%s'",
                                      e, target);
+        }
+    }
+
+    static void checkNoSymbolicLinks(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        Path current = absolute.getRoot();
+        for (Path part : absolute) {
+            current = current.resolve(part);
+            E.checkState(!Files.isSymbolicLink(current),
+                         "Snapshot path '%s' contains symbolic link '%s'",
+                         absolute, current);
+        }
+    }
+
+    private Path rootRealPath() {
+        try {
+            checkNoSymbolicLinks(this.root);
+            Files.createDirectories(this.root);
+            checkNoSymbolicLinks(this.root);
+            return this.root.toRealPath();
+        } catch (IOException e) {
+            throw new ToolsException("Failed to resolve snapshot storage root '%s'",
+                                     e, this.root);
         }
     }
 
