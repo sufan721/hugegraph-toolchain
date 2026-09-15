@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.hugegraph.api.graphs.GraphBackupsAPI;
 import org.apache.hugegraph.api.graphs.GraphsAPI;
 import org.apache.hugegraph.rest.ClientException;
 import org.apache.hugegraph.structure.constant.GraphMode;
@@ -33,9 +34,13 @@ import org.apache.hugegraph.client.RestClient;
 public class GraphsManager {
 
     private final GraphsAPI graphsAPI;
+    private final RestClient client;
+    private final String graphSpace;
 
     public GraphsManager(RestClient client, String graphSpace) {
         this.graphsAPI = new GraphsAPI(client, graphSpace);
+        this.client = client;
+        this.graphSpace = graphSpace;
     }
 
     public Map<String, String> createGraph(String name, String config) {
@@ -142,5 +147,16 @@ public class GraphsManager {
 
     public String clone(String graph, Map<String, Object> body) {
         return this.graphsAPI.clone(graph, body);
+    }
+
+    public long createBackup(String graph, String repository, int keepNum) {
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph)
+               .create(repository, keepNum);
+    }
+
+    public long restoreBackup(String graph, String repository,
+                              String backupId, boolean confirm) {
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph)
+               .restore(repository, backupId, confirm);
     }
 }
