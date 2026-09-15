@@ -30,17 +30,13 @@ public class SnapshotCommandTest {
         command.parseCommand(new String[] {
                 "--graph", "hugegraph",
                 "snapshot-backup",
-                "--directory", "./backup",
-                "--mode", "full",
+                "--repository", "daily",
                 "--keep-num", "2",
-                "--server-data-root", "./server-data"
         });
         SubCommands.SnapshotBackup backup =
                 command.subCommand("snapshot-backup");
-        Assert.assertEquals("./backup", backup.directory());
-        Assert.assertEquals("full", backup.mode());
+        Assert.assertEquals("daily", backup.repository());
         Assert.assertEquals(2, backup.keepNum());
-        Assert.assertEquals("./server-data", backup.serverDataRoot());
     }
 
     @Test
@@ -49,12 +45,14 @@ public class SnapshotCommandTest {
         command.parseCommand(new String[] {
                 "--graph", "hugegraph",
                 "snapshot-restore",
-                "--directory", "./backup",
-                "--version", "20260912-100000"
+                "--repository", "daily",
+                "--backup-id", "20260912-100000",
+                "--confirm"
         });
         SubCommands.SnapshotRestore restore =
                 command.subCommand("snapshot-restore");
-        Assert.assertEquals("./backup", restore.directory());
+        Assert.assertEquals("daily", restore.repository());
         Assert.assertEquals("20260912-100000", restore.backupId());
+        Assert.assertTrue(restore.confirm());
     }
 }

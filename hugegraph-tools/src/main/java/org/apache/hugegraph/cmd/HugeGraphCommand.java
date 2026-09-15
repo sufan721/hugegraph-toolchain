@@ -36,7 +36,8 @@ import org.apache.hugegraph.manager.DumpGraphManager;
 import org.apache.hugegraph.manager.GraphsManager;
 import org.apache.hugegraph.manager.GremlinManager;
 import org.apache.hugegraph.manager.RestoreManager;
-import org.apache.hugegraph.snapshot.SnapshotManager;
+import org.apache.hugegraph.manager.SnapshotBackupManager;
+import org.apache.hugegraph.manager.SnapshotRestoreManager;
 import org.apache.hugegraph.manager.TasksManager;
 import org.apache.hugegraph.structure.Task;
 import org.apache.hugegraph.structure.constant.GraphMode;
@@ -214,27 +215,15 @@ public class HugeGraphCommand {
             case "snapshot-backup": {
                 SubCommands.SnapshotBackup snapshotBackup =
                         this.subCommand(subCmd);
-                SnapshotManager snapshotManager = manager(SnapshotManager.class);
-                snapshotManager.init(snapshotBackup);
-                snapshotManager.backup();
+                SnapshotBackupManager snapshotManager = manager(SnapshotBackupManager.class);
+                snapshotManager.backup(snapshotBackup);
                 break;
             }
             case "snapshot-restore": {
-                GraphsManager snapshotGraphsManager =
-                        manager(GraphsManager.class);
-                GraphMode snapshotMode = snapshotGraphsManager.mode(
-                                         this.graph());
-                E.checkState(snapshotMode == GraphMode.RESTORING,
-                             "Invalid mode '%s' of graph '%s' for " +
-                             "snapshot-restore sub-command, the graph must " +
-                             "be in '%s' mode because the physical snapshot " +
-                             "replaces its data directory",
-                             snapshotMode, this.graph(), GraphMode.RESTORING);
                 SubCommands.SnapshotRestore snapshotRestore =
                         this.subCommand(subCmd);
-                SnapshotManager snapshotManager = manager(SnapshotManager.class);
-                snapshotManager.init(snapshotRestore);
-                snapshotManager.restore();
+                SnapshotRestoreManager snapshotManager = manager(SnapshotRestoreManager.class);
+                snapshotManager.restore(snapshotRestore);
                 break;
             }
             case "migrate":
