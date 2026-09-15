@@ -268,7 +268,7 @@ public class SubCommands {
         }
     }
 
-    @Parameters(commandDescription = "Restore a physical RocksDB snapshot")
+    @Parameters(commandDescription = "Restore a Server-managed graph backup")
     public static class SnapshotRestore extends SnapshotCommand {
 
         @Parameter(names = {"--backup-id"}, arity = 1,
@@ -276,7 +276,7 @@ public class SubCommands {
         public String backupId;
 
         @Parameter(names = {"--confirm"}, arity = 0, required = true,
-                   description = "Confirm offline restore request")
+                   description = "Confirm maintenance restore request")
         public boolean confirm;
 
         public String backupId() {

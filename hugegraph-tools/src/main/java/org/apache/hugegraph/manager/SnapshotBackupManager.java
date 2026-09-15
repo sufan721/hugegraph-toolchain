@@ -26,6 +26,8 @@ import org.apache.hugegraph.util.E;
 
 public class SnapshotBackupManager extends ToolManager {
 
+    private static final long WAIT_SECONDS = 60;
+
     public SnapshotBackupManager(ToolClient.ConnectionInfo info) {
         super(info, "snapshot-backup");
     }
@@ -36,7 +38,11 @@ public class SnapshotBackupManager extends ToolManager {
                                                    command.repository(),
                                                    command.keepNum());
         Printer.printKV("Task id", id);
-        Task task = this.client.tasks().waitUntilTaskCompleted(id, 60);
+        Task task = this.client.tasks().waitUntilTaskCompleted(id,
+                                                              WAIT_SECONDS);
+        if (task != null && task.result() != null) {
+            Printer.printKV("Backup result", task.result());
+        }
         return task == null ? id : task.id();
     }
 }
