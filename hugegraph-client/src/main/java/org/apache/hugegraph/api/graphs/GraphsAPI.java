@@ -96,6 +96,11 @@ public class GraphsAPI extends API {
         return result.readObject(Map.class);
     }
 
+    /**
+     * @deprecated Use the graph backups API. Physical snapshot capture is
+     *             performed by the Server backup task.
+     */
+    @Deprecated
     public Map<String, String> createSnapshot(String name) {
         RestResult result = this.client.put(joinPath(this.path(), name),
                                             SNAPSHOT_CREATE,
@@ -105,6 +110,11 @@ public class GraphsAPI extends API {
         return response;
     }
 
+    /**
+     * @deprecated Use the graph backups API. Physical snapshot recovery is
+     *             performed by the Server backup task.
+     */
+    @Deprecated
     public Map<String, String> resumeSnapshot(String name) {
         RestResult result = this.client.put(joinPath(this.path(), name),
                                             SNAPSHOT_RESUME,

@@ -45,6 +45,8 @@ public class GraphBackupsAPI extends API {
     }
 
     public long create(String repository, int keepNum) {
+        // Server resolves the repository and runs RocksDB BackupEngine. This
+        // client never reads the graph data directory or copies DB files.
         checkRepository(repository);
         E.checkArgument(keepNum >= 0, "Keep number must be non-negative");
         Map<String, Object> body = new java.util.LinkedHashMap<>();
@@ -60,6 +62,8 @@ public class GraphBackupsAPI extends API {
     }
 
     public long restore(String repository, String backupId, boolean confirm) {
+        // A graph backup version is restored by the Server as a coordinated
+        // set of Store backup ids; the client only submits the task.
         E.checkArgument(confirm, "Snapshot restore requires --confirm");
         checkRepository(repository);
         Map<String, Object> body = new java.util.LinkedHashMap<>();

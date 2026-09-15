@@ -20,6 +20,7 @@ package org.apache.hugegraph.driver;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -137,10 +138,20 @@ public class GraphsManager {
         return this.graphsAPI.readMode(graph);
     }
 
+    /**
+     * @deprecated Use {@link #createBackup(String, String, int)}. Snapshot
+     *             capture is owned by the Server backup task.
+     */
+    @Deprecated
     public Map<String, String> createSnapshot(String graph) {
         return this.graphsAPI.createSnapshot(graph);
     }
 
+    /**
+     * @deprecated Use {@link #restoreBackup(String, String, String, boolean)}.
+     *             Restore is owned by the Server backup task.
+     */
+    @Deprecated
     public Map<String, String> resumeSnapshot(String graph) {
         return this.graphsAPI.resumeSnapshot(graph);
     }
@@ -150,6 +161,8 @@ public class GraphsManager {
     }
 
     public long createBackup(String graph, String repository, int keepNum) {
+        // The repository is resolved by Server. Tools must not access the
+        // Server data directory or implement file-level incremental logic.
         return new GraphBackupsAPI(this.client, this.graphSpace, graph)
                .create(repository, keepNum);
     }
@@ -158,5 +171,16 @@ public class GraphsManager {
                               String backupId, boolean confirm) {
         return new GraphBackupsAPI(this.client, this.graphSpace, graph)
                .restore(repository, backupId, confirm);
+    }
+
+    public Map<String, Object> getBackup(String graph, String backupId) {
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph)
+               .get(backupId);
+    }
+
+    public List<Map<String, Object>> listBackups(String graph) {
+        List<Map<String, Object>> backups = new GraphBackupsAPI(
+                this.client, this.graphSpace, graph).list();
+        return backups == null ? Collections.emptyList() : backups;
     }
 }
