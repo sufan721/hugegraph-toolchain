@@ -26,8 +26,6 @@ import org.apache.hugegraph.util.E;
 
 public class SnapshotRestoreManager extends ToolManager {
 
-    private static final long WAIT_SECONDS = 60;
-
     public SnapshotRestoreManager(ToolClient.ConnectionInfo info) {
         super(info, "snapshot-restore");
     }
@@ -40,7 +38,7 @@ public class SnapshotRestoreManager extends ToolManager {
                                                     command.confirm());
         Printer.printKV("Task id", id);
         Task task = this.client.tasks().waitUntilTaskCompleted(id,
-                                                              WAIT_SECONDS);
+                                                              this.timeout());
         if (task != null && task.result() != null) {
             Printer.printKV("Restore result", task.result());
         }
