@@ -17,8 +17,11 @@
 
 package org.apache.hugegraph.unit;
 
+import java.io.IOException;
+
 import org.apache.hugegraph.api.task.TaskAPI;
 import org.apache.hugegraph.client.RestClient;
+import org.apache.hugegraph.exception.ServerException;
 import org.apache.hugegraph.rest.ClientException;
 import org.apache.hugegraph.rest.RestResult;
 import org.apache.hugegraph.structure.Task;
@@ -37,7 +40,8 @@ public class TaskRetryTest extends BaseUnitTest {
         Mockito.when(task.success()).thenReturn(true);
         Mockito.when(result.readObject(Task.class)).thenReturn(task);
         Mockito.when(client.get(Mockito.anyString(), Mockito.anyString()))
-               .thenThrow(new ClientException("server unavailable"))
+               .thenThrow(new ClientException("server unavailable",
+                                               new IOException("reset")))
                .thenReturn(result);
 
         Task completed = new TaskAPI(client, "DEFAULT", "test-graph")
@@ -45,6 +49,23 @@ public class TaskRetryTest extends BaseUnitTest {
 
         Assert.assertEquals(task, completed);
         Mockito.verify(client, Mockito.times(2)).get(Mockito.anyString(),
+                                                      Mockito.anyString());
+    }
+
+    @Test
+    public void testWaitDoesNotRetryUnauthorizedTaskRequest() {
+        RestClient client = Mockito.mock(RestClient.class);
+        ServerException unauthorized = new ServerException("unauthorized");
+        unauthorized.status(401);
+        Mockito.when(client.get(Mockito.anyString(), Mockito.anyString()))
+               .thenThrow(unauthorized);
+
+        Throwable error = Assert.assertThrows(ServerException.class,
+                () -> new TaskAPI(client, "DEFAULT", "test-graph")
+                        .waitUntilTaskSuccessWithRetry(1, 0));
+
+        Assert.assertEquals(unauthorized, error);
+        Mockito.verify(client, Mockito.times(1)).get(Mockito.anyString(),
                                                       Mockito.anyString());
     }
 }

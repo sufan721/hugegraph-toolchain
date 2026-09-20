@@ -17,12 +17,14 @@
 
 package org.apache.hugegraph.api.task;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.client.RestClient;
+import org.apache.hugegraph.exception.ServerException;
 import org.apache.hugegraph.rest.ClientException;
 import org.apache.hugegraph.rest.RestResult;
 import org.apache.hugegraph.structure.Task;
@@ -163,7 +165,14 @@ public class TaskAPI extends API {
             Task task = null;
             try {
                 task = this.get(taskId);
-            } catch (RuntimeException e) {
+            } catch (Exception e) {
+                if (!isRetryable(e)) {
+                    if (e instanceof RuntimeException) {
+                        throw (RuntimeException) e;
+                    }
+                    throw new ClientException("Failed to query task '%s'",
+                                              e, taskId);
+                }
                 // The Server may be restarting. Retry until the local deadline.
             }
             if (task != null) {
@@ -188,6 +197,19 @@ public class TaskAPI extends API {
                                           taskId);
             }
         }
+    }
+
+    private static boolean isRetryable(Throwable error) {
+        if (error instanceof ServerException) {
+            int status = ((ServerException) error).status();
+            return status >= 500 && status < 600;
+        }
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof IOException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Task getFromCache(long taskId) {
