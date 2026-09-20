@@ -252,6 +252,14 @@ public class SubCommands {
         public String repository() {
             return this.repository;
         }
+
+        @Parameter(names = {"--request-id"}, arity = 1,
+                   description = "Idempotency key for retrying a request")
+        public String requestId;
+
+        public String requestId() {
+            return this.requestId;
+        }
     }
 
     @Parameters(commandDescription = "Create a physical RocksDB snapshot backup")

@@ -20,6 +20,9 @@ maintenance restore flow.
 # Create a backup version; the first call creates the baseline automatically
 bin/hugegraph snapshot-backup --repository daily --keep-num 3
 
+# Supply the same request id when retrying after a lost response
+bin/hugegraph snapshot-backup --repository daily --request-id <request-id>
+
 # Restore a version through the Server maintenance workflow
 bin/hugegraph snapshot-restore --repository daily --backup-id <backup-id> --confirm
 ```

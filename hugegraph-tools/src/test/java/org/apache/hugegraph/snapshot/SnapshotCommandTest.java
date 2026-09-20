@@ -32,11 +32,13 @@ public class SnapshotCommandTest {
                 "snapshot-backup",
                 "--repository", "daily",
                 "--keep-num", "2",
+                "--request-id", "backup-request",
         });
         SubCommands.SnapshotBackup backup =
                 command.subCommand("snapshot-backup");
         Assert.assertEquals("daily", backup.repository());
         Assert.assertEquals(2, backup.keepNum());
+        Assert.assertEquals("backup-request", backup.requestId());
     }
 
     @Test
@@ -47,6 +49,7 @@ public class SnapshotCommandTest {
                 "snapshot-restore",
                 "--repository", "daily",
                 "--backup-id", "20260912-100000",
+                "--request-id", "restore-request",
                 "--confirm"
         });
         SubCommands.SnapshotRestore restore =
@@ -54,5 +57,6 @@ public class SnapshotCommandTest {
         Assert.assertEquals("daily", restore.repository());
         Assert.assertEquals("20260912-100000", restore.backupId());
         Assert.assertTrue(restore.confirm());
+        Assert.assertEquals("restore-request", restore.requestId());
     }
 }

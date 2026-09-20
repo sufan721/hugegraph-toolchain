@@ -17,6 +17,8 @@
 
 package org.apache.hugegraph.manager;
 
+import java.util.UUID;
+
 import org.apache.hugegraph.base.Printer;
 import org.apache.hugegraph.base.ToolClient;
 import org.apache.hugegraph.base.ToolManager;
@@ -32,12 +34,20 @@ public class SnapshotBackupManager extends ToolManager {
 
     public long backup(SubCommands.SnapshotBackup command) {
         E.checkNotNull(command, "command");
+        String requestId = command.requestId();
+        if (requestId == null || requestId.isEmpty()) {
+            requestId = UUID.randomUUID().toString();
+        }
+        Printer.printKV("Request id", requestId);
         long id = this.client.graphs().createBackup(this.graph(),
-                                                   command.repository(),
-                                                   command.keepNum());
+                                                    command.repository(),
+                                                    command.keepNum(), requestId);
         Printer.printKV("Task id", id);
-        Task task = this.client.tasks().waitUntilTaskCompleted(id,
-                                                              this.timeout());
+        Task task = this.client.tasks().waitUntilTaskCompletedWithRetry(
+                id, this.timeout());
+        if (task != null) {
+            Printer.printKV("Task status", task.status());
+        }
         if (task != null && task.result() != null) {
             Printer.printKV("Backup result", task.result());
         }

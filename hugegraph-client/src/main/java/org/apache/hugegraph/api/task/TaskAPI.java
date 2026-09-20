@@ -147,6 +147,49 @@ public class TaskAPI extends API {
         }
     }
 
+    /**
+     * Wait for a task while tolerating temporary Server unavailability.
+     *
+     * This is used by operations whose execution can intentionally restart the
+     * Server, such as physical snapshot restore. It avoids TaskCache because a
+     * polling exception would otherwise terminate its scheduled worker.
+     */
+    public Task waitUntilTaskSuccessWithRetry(long taskId, long seconds) {
+        if (taskId == 0) {
+            return null;
+        }
+        long deadline = System.nanoTime() + seconds * 1000000000L;
+        while (true) {
+            Task task = null;
+            try {
+                task = this.get(taskId);
+            } catch (RuntimeException e) {
+                // The Server may be restarting. Retry until the local deadline.
+            }
+            if (task != null) {
+                if (task.success()) {
+                    return task;
+                }
+                if (task.completed()) {
+                    throw new ClientException("Task '%s' is %s, result is '%s'",
+                                              taskId, task.status(), task.result());
+                }
+            }
+            if (System.nanoTime() >= deadline) {
+                String message = "Task '%s' not completed in %s seconds, " +
+                                 "it can still be queried by task-get API";
+                throw new ClientException(message, taskId, seconds);
+            }
+            try {
+                Thread.sleep(QUERY_INTERVAL);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ClientException("Interrupted while waiting for task '%s'",
+                                          taskId);
+            }
+        }
+    }
+
     private Task getFromCache(long taskId) {
         return TaskCache.instance().get(this, taskId);
     }

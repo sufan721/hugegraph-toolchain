@@ -45,6 +45,10 @@ public class GraphBackupsAPI extends API {
     }
 
     public long create(String repository, int keepNum) {
+        return this.create(repository, keepNum, null);
+    }
+
+    public long create(String repository, int keepNum, String requestId) {
         // Server resolves the repository and runs RocksDB BackupEngine. This
         // client never reads the graph data directory or copies DB files.
         checkRepository(repository);
@@ -52,6 +56,9 @@ public class GraphBackupsAPI extends API {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("repository", repository);
         body.put("keep_num", keepNum);
+        if (requestId != null && !requestId.isEmpty()) {
+            body.put("request_id", requestId);
+        }
         RestResult result = this.client.post(this.path(), body);
         Map<String, Object> response = result.readObject(Map.class);
         Object taskId = response.get(TASK_ID);
@@ -62,6 +69,11 @@ public class GraphBackupsAPI extends API {
     }
 
     public long restore(String repository, String backupId, boolean confirm) {
+        return this.restore(repository, backupId, confirm, null);
+    }
+
+    public long restore(String repository, String backupId, boolean confirm,
+                        String requestId) {
         // A graph backup version is restored by the Server as a coordinated
         // set of Store backup ids; the client only submits the task.
         E.checkArgument(confirm, "Snapshot restore requires --confirm");
@@ -72,6 +84,9 @@ public class GraphBackupsAPI extends API {
             body.put("backup_id", backupId);
         }
         body.put("confirm", true);
+        if (requestId != null && !requestId.isEmpty()) {
+            body.put("request_id", requestId);
+        }
         RestResult result = this.client.post(this.path() + "/restore", body);
         Map<String, Object> response = result.readObject(Map.class);
         Object taskId = response.get(TASK_ID);

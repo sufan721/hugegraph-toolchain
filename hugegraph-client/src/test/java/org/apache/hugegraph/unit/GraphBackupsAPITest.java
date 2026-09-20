@@ -86,6 +86,33 @@ public class GraphBackupsAPITest extends BaseUnitTest {
     }
 
     @Test
+    public void testCreateAndRestoreSubmitRequestId() {
+        RestResult createResult = Mockito.mock(RestResult.class);
+        Mockito.when(createResult.readObject(Map.class)).thenReturn(
+                Collections.singletonMap("task_id", 44));
+        RestResult restoreResult = Mockito.mock(RestResult.class);
+        Mockito.when(restoreResult.readObject(Map.class)).thenReturn(
+                Collections.singletonMap("task_id", 45));
+        Mockito.when(this.mockClient.post(Mockito.anyString(), Mockito.any()))
+               .thenReturn(createResult, restoreResult);
+
+        Assert.assertEquals(44L, this.backupsAPI.create("daily", 3,
+                                                       "backup-request"));
+        Assert.assertEquals(45L, this.backupsAPI.restore("daily", "v2", true,
+                                                         "restore-request"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> body =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(this.mockClient, Mockito.times(2)).post(
+                Mockito.anyString(), body.capture());
+        Assert.assertEquals("backup-request", body.getAllValues().get(0)
+                                             .get("request_id"));
+        Assert.assertEquals("restore-request", body.getAllValues().get(1)
+                                              .get("request_id"));
+    }
+
+    @Test
     public void testListsAndGetsServerManagedVersions() {
         RestResult listResult = Mockito.mock(RestResult.class);
         Map<String, Object> response = new LinkedHashMap<>();
