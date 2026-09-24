@@ -17,6 +17,8 @@
 
 package org.apache.hugegraph.api.graphs;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +33,7 @@ public class GraphBackupsAPI extends API {
 
     private static final String PATH = "graphspaces/%s/graphs/%s/backups";
     private static final String TASK_ID = "task_id";
+    private static final String BACKUPS = "backups";
     private static final String REPOSITORY_PATTERN =
             "[A-Za-z0-9][A-Za-z0-9._-]{0,62}";
 
@@ -56,16 +59,12 @@ public class GraphBackupsAPI extends API {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("repository", repository);
         body.put("keep_num", keepNum);
-        if (requestId != null && !requestId.isEmpty()) {
+        if (requestId != null && !requestId.trim().isEmpty()) {
             body.put("request_id", requestId);
         }
         RestResult result = this.client.post(this.path(), body);
         Map<String, Object> response = result.readObject(Map.class);
-        Object taskId = response.get(TASK_ID);
-        E.checkState(taskId instanceof Number,
-                     "Backup response must contain numeric '%s': %s",
-                     TASK_ID, response);
-        return ((Number) taskId).longValue();
+        return parseTaskId(response, "Backup");
     }
 
     public long restore(String repository, String backupId, boolean confirm) {
@@ -78,34 +77,110 @@ public class GraphBackupsAPI extends API {
         // set of Store backup ids; the client only submits the task.
         E.checkArgument(confirm, "Snapshot restore requires --confirm");
         checkRepository(repository);
+        checkBackupId(backupId);
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("repository", repository);
         if (backupId != null && !backupId.isEmpty()) {
             body.put("backup_id", backupId);
         }
         body.put("confirm", true);
-        if (requestId != null && !requestId.isEmpty()) {
+        if (requestId != null && !requestId.trim().isEmpty()) {
             body.put("request_id", requestId);
         }
         RestResult result = this.client.post(this.path() + "/restore", body);
         Map<String, Object> response = result.readObject(Map.class);
-        Object taskId = response.get(TASK_ID);
-        E.checkState(taskId instanceof Number,
-                     "Restore response must contain numeric '%s': %s",
-                     TASK_ID, response);
-        return ((Number) taskId).longValue();
+        return parseTaskId(response, "Restore");
     }
 
     public Map<String, Object> get(String backupId) {
+        checkRequiredBackupId(backupId);
         RestResult result = this.client.get(this.path(), backupId);
-        return result.readObject(Map.class);
+        return readBackup(result, backupId);
+    }
+
+    public Map<String, Object> get(String repository, String backupId) {
+        checkRepository(repository);
+        checkPathBackupId(backupId);
+        RestResult result = this.client.get(this.path() + "/" + backupId,
+                                           Collections.singletonMap(
+                                                   "repository", repository));
+        return readBackup(result, backupId);
     }
 
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> list() {
         RestResult result = this.client.get(this.path());
-        Object value = result.readObject(Map.class).get("backups");
-        return value == null ? Collections.emptyList() : (List<Map<String, Object>>) value;
+        return readBackupList(result);
+    }
+
+    public List<Map<String, Object>> list(String repository) {
+        checkRepository(repository);
+        RestResult result = this.client.get(this.path(),
+                                           Collections.singletonMap(
+                                                   "repository", repository));
+        return readBackupList(result);
+    }
+
+    private static Map<String, Object> readBackup(RestResult result,
+                                                   String backupId) {
+        Map<String, Object> response = result.readObject(Map.class);
+        E.checkState(response != null,
+                     "Backup response for '%s' must be an object", backupId);
+        return response;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> readBackupList(RestResult result) {
+        Map<String, Object> response = result.readObject(Map.class);
+        E.checkState(response != null && response.containsKey(BACKUPS),
+                     "Backup list response must contain '%s': %s",
+                     BACKUPS, response);
+        Object value = response.get(BACKUPS);
+        E.checkState(value instanceof List,
+                     "Backup list response '%s' must be a list: %s",
+                     BACKUPS, response);
+        List<Map<String, Object>> backups = new ArrayList<>();
+        for (Object backup : (List<?>) value) {
+            E.checkState(backup instanceof Map,
+                         "Backup list entry must be an object: %s", backup);
+            backups.add((Map<String, Object>) backup);
+        }
+        return backups;
+    }
+
+    private static long parseTaskId(Map<String, Object> response,
+                                    String operation) {
+        Object taskId = response == null ? null : response.get(TASK_ID);
+        E.checkState(taskId instanceof Number,
+                     "%s response must contain numeric '%s': %s",
+                     operation, TASK_ID, response);
+        try {
+            long id = new BigDecimal(taskId.toString()).longValueExact();
+            E.checkState(id > 0,
+                         "%s response must contain a positive '%s': %s",
+                         operation, TASK_ID, response);
+            return id;
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new IllegalStateException(String.format(
+                    "%s response must contain an integral '%s': %s",
+                    operation, TASK_ID, response), e);
+        }
+    }
+
+    private static void checkBackupId(String backupId) {
+        E.checkArgument(backupId == null || !backupId.trim().isEmpty(),
+                        "Backup id must not be blank");
+    }
+
+    private static void checkRequiredBackupId(String backupId) {
+        E.checkArgument(backupId != null && !backupId.trim().isEmpty(),
+                        "Backup id must not be blank");
+    }
+
+    private static void checkPathBackupId(String backupId) {
+        checkRequiredBackupId(backupId);
+        E.checkArgument(backupId.matches("[A-Za-z0-9][A-Za-z0-9._-]*"),
+                        "Invalid backup id '%s'", backupId);
     }
 
     private static void checkRepository(String repository) {

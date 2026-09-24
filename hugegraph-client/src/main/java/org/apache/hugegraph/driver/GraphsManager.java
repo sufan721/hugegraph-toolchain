@@ -20,7 +20,6 @@ package org.apache.hugegraph.driver;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -189,9 +188,19 @@ public class GraphsManager {
                .get(backupId);
     }
 
+    public Map<String, Object> getBackup(String graph, String repository,
+                                         String backupId) {
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph)
+                .get(repository, backupId);
+    }
+
     public List<Map<String, Object>> listBackups(String graph) {
-        List<Map<String, Object>> backups = new GraphBackupsAPI(
-                this.client, this.graphSpace, graph).list();
-        return backups == null ? Collections.emptyList() : backups;
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph).list();
+    }
+
+    public List<Map<String, Object>> listBackups(String graph,
+                                                 String repository) {
+        return new GraphBackupsAPI(this.client, this.graphSpace, graph)
+                .list(repository);
     }
 }

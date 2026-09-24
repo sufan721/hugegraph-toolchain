@@ -81,6 +81,8 @@ public class SubCommands {
         this.commands.put("restore", new Restore());
         this.commands.put("snapshot-backup", new SnapshotBackup());
         this.commands.put("snapshot-restore", new SnapshotRestore());
+        this.commands.put("snapshot-list", new SnapshotList());
+        this.commands.put("snapshot-get", new SnapshotGet());
         this.commands.put("migrate", new Migrate());
 
         this.commands.put("deploy", new Deploy());
@@ -244,7 +246,7 @@ public class SubCommands {
         }
     }
 
-    public static class SnapshotCommand {
+    public static class SnapshotRepositoryCommand {
         @Parameter(names = {"--repository"}, arity = 1, required = true,
                    description = "Server-configured backup repository")
         public String repository;
@@ -252,6 +254,9 @@ public class SubCommands {
         public String repository() {
             return this.repository;
         }
+    }
+
+    public static class SnapshotCommand extends SnapshotRepositoryCommand {
 
         @Parameter(names = {"--request-id"}, arity = 1,
                    description = "Idempotency key for retrying a request")
@@ -259,6 +264,15 @@ public class SubCommands {
 
         public String requestId() {
             return this.requestId;
+        }
+
+        @Parameter(names = {"--task-timeout"}, arity = 1,
+                   validateWith = {PositiveValidator.class},
+                   description = "Maximum seconds to wait for the snapshot task")
+        public int taskTimeout = 60;
+
+        public int taskTimeout() {
+            return this.taskTimeout;
         }
     }
 
@@ -293,6 +307,22 @@ public class SubCommands {
 
         public boolean confirm() {
             return this.confirm;
+        }
+    }
+
+    @Parameters(commandDescription = "List Server-managed graph backup versions")
+    public static class SnapshotList extends SnapshotRepositoryCommand {
+    }
+
+    @Parameters(commandDescription = "Get a Server-managed graph backup version")
+    public static class SnapshotGet extends SnapshotRepositoryCommand {
+
+        @Parameter(names = {"--backup-id"}, arity = 1, required = true,
+                   description = "Backup version to inspect")
+        public String backupId;
+
+        public String backupId() {
+            return this.backupId;
         }
     }
 
@@ -775,7 +805,7 @@ public class SubCommands {
     public static class Timeout {
 
         @Parameter(names = {"--timeout"}, arity = 1,
-                   description = "Connection timeout")
+                   description = "HTTP connection timeout in seconds")
         public int timeout = 30;
     }
 

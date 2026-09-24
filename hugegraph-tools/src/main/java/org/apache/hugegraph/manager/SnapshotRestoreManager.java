@@ -35,7 +35,7 @@ public class SnapshotRestoreManager extends ToolManager {
     public long restore(SubCommands.SnapshotRestore command) {
         E.checkNotNull(command, "command");
         String requestId = command.requestId();
-        if (requestId == null || requestId.isEmpty()) {
+        if (requestId == null || requestId.trim().isEmpty()) {
             requestId = UUID.randomUUID().toString();
         }
         Printer.printKV("Request id", requestId);
@@ -45,7 +45,7 @@ public class SnapshotRestoreManager extends ToolManager {
                                                     command.confirm(), requestId);
         Printer.printKV("Task id", id);
         Task task = this.client.tasks().waitUntilTaskCompletedWithRetry(
-                id, this.timeout());
+                id, command.taskTimeout());
         if (task != null) {
             Printer.printKV("Task status", task.status());
         }

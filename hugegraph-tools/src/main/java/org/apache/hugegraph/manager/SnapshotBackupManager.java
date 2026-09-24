@@ -35,7 +35,7 @@ public class SnapshotBackupManager extends ToolManager {
     public long backup(SubCommands.SnapshotBackup command) {
         E.checkNotNull(command, "command");
         String requestId = command.requestId();
-        if (requestId == null || requestId.isEmpty()) {
+        if (requestId == null || requestId.trim().isEmpty()) {
             requestId = UUID.randomUUID().toString();
         }
         Printer.printKV("Request id", requestId);
@@ -44,7 +44,7 @@ public class SnapshotBackupManager extends ToolManager {
                                                     command.keepNum(), requestId);
         Printer.printKV("Task id", id);
         Task task = this.client.tasks().waitUntilTaskCompletedWithRetry(
-                id, this.timeout());
+                id, command.taskTimeout());
         if (task != null) {
             Printer.printKV("Task status", task.status());
         }

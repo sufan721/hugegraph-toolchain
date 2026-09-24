@@ -33,12 +33,14 @@ public class SnapshotCommandTest {
                 "--repository", "daily",
                 "--keep-num", "2",
                 "--request-id", "backup-request",
+                "--task-timeout", "90",
         });
         SubCommands.SnapshotBackup backup =
                 command.subCommand("snapshot-backup");
         Assert.assertEquals("daily", backup.repository());
         Assert.assertEquals(2, backup.keepNum());
         Assert.assertEquals("backup-request", backup.requestId());
+        Assert.assertEquals(90, backup.taskTimeout());
     }
 
     @Test
@@ -58,5 +60,28 @@ public class SnapshotCommandTest {
         Assert.assertEquals("20260912-100000", restore.backupId());
         Assert.assertTrue(restore.confirm());
         Assert.assertEquals("restore-request", restore.requestId());
+    }
+
+    @Test
+    public void testParseSnapshotDiscoveryCommands() {
+        HugeGraphCommand listCommand = new HugeGraphCommand();
+        listCommand.parseCommand(new String[] {
+                "--graph", "hugegraph",
+                "snapshot-list",
+                "--repository", "daily"
+        });
+        SubCommands.SnapshotList list = listCommand.subCommand("snapshot-list");
+        Assert.assertEquals("daily", list.repository());
+
+        HugeGraphCommand getCommand = new HugeGraphCommand();
+        getCommand.parseCommand(new String[] {
+                "--graph", "hugegraph",
+                "snapshot-get",
+                "--repository", "daily",
+                "--backup-id", "20260912-100000"
+        });
+        SubCommands.SnapshotGet get = getCommand.subCommand("snapshot-get");
+        Assert.assertEquals("daily", get.repository());
+        Assert.assertEquals("20260912-100000", get.backupId());
     }
 }

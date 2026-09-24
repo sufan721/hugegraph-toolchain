@@ -37,6 +37,8 @@ import org.apache.hugegraph.manager.GraphsManager;
 import org.apache.hugegraph.manager.GremlinManager;
 import org.apache.hugegraph.manager.RestoreManager;
 import org.apache.hugegraph.manager.SnapshotBackupManager;
+import org.apache.hugegraph.manager.SnapshotGetManager;
+import org.apache.hugegraph.manager.SnapshotListManager;
 import org.apache.hugegraph.manager.SnapshotRestoreManager;
 import org.apache.hugegraph.manager.TasksManager;
 import org.apache.hugegraph.structure.Task;
@@ -224,6 +226,18 @@ public class HugeGraphCommand {
                         this.subCommand(subCmd);
                 SnapshotRestoreManager snapshotManager = manager(SnapshotRestoreManager.class);
                 snapshotManager.restore(snapshotRestore);
+                break;
+            }
+            case "snapshot-list": {
+                SubCommands.SnapshotList snapshotList = this.subCommand(subCmd);
+                SnapshotListManager snapshotManager = manager(SnapshotListManager.class);
+                snapshotManager.list(snapshotList);
+                break;
+            }
+            case "snapshot-get": {
+                SubCommands.SnapshotGet snapshotGet = this.subCommand(subCmd);
+                SnapshotGetManager snapshotManager = manager(SnapshotGetManager.class);
+                snapshotManager.get(snapshotGet);
                 break;
             }
             case "migrate":

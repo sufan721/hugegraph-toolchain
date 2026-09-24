@@ -134,6 +134,30 @@ public class GraphBackupsAPITest extends BaseUnitTest {
         Assert.assertEquals(version, this.backupsAPI.get("v1"));
     }
 
+    @Test
+    public void testListsAndGetsVersionsFromRepository() {
+        RestResult listResult = Mockito.mock(RestResult.class);
+        Map<String, Object> response = new LinkedHashMap<>();
+        List<Map<String, Object>> versions = Collections.singletonList(
+                Collections.singletonMap("backup_id", "v1"));
+        response.put("backups", versions);
+        Mockito.when(listResult.readObject(Map.class)).thenReturn(response);
+        Mockito.when(this.mockClient.get(
+                Mockito.eq("graphspaces/DEFAULT/graphs/test-graph/backups"),
+                Mockito.eq(Collections.singletonMap("repository", "daily"))))
+               .thenReturn(listResult);
+        Assert.assertEquals(versions, this.backupsAPI.list("daily"));
+
+        RestResult getResult = Mockito.mock(RestResult.class);
+        Map<String, Object> version = Collections.singletonMap("backup_id", "v1");
+        Mockito.when(getResult.readObject(Map.class)).thenReturn(version);
+        Mockito.when(this.mockClient.get(
+                Mockito.eq("graphspaces/DEFAULT/graphs/test-graph/backups/v1"),
+                Mockito.eq(Collections.singletonMap("repository", "daily"))))
+               .thenReturn(getResult);
+        Assert.assertEquals(version, this.backupsAPI.get("daily", "v1"));
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void testCreateRejectsInvalidRepository() {
         this.backupsAPI.create("../data", 1);
@@ -142,5 +166,89 @@ public class GraphBackupsAPITest extends BaseUnitTest {
     @Test(expected = IllegalArgumentException.class)
     public void testRestoreRequiresConfirmation() {
         this.backupsAPI.restore("daily", "v1", false);
+    }
+
+    @Test
+    public void testRestoreRejectsBlankBackupId() {
+        Assert.assertThrows(IllegalArgumentException.class, () -> {
+            this.backupsAPI.restore("daily", "  ", true);
+        });
+        Mockito.verify(this.mockClient, Mockito.never()).post(
+                Mockito.anyString(), Mockito.any());
+    }
+
+    @Test
+    public void testRestoreWithoutBackupIdUsesLatestVersion() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.singletonMap("task_id", 46));
+        Mockito.when(this.mockClient.post(Mockito.anyString(), Mockito.any()))
+               .thenReturn(result);
+
+        Assert.assertEquals(46L, this.backupsAPI.restore("daily", null, true));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> body =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(this.mockClient).post(
+                Mockito.eq("graphspaces/DEFAULT/graphs/test-graph/backups/restore"),
+                body.capture());
+        Assert.assertFalse(body.getValue().containsKey("backup_id"));
+    }
+
+    @Test
+    public void testGetRejectsBlankBackupIdBeforeRequest() {
+        Assert.assertThrows(IllegalArgumentException.class, () -> {
+            this.backupsAPI.get(" ");
+        });
+        Mockito.verify(this.mockClient, Mockito.never()).get(
+                Mockito.anyString(), Mockito.anyString());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testCreateRejectsNonIntegralTaskId() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.<String, Object>singletonMap("task_id", 42.5));
+        Mockito.when(this.mockClient.post(Mockito.anyString(), Mockito.any()))
+               .thenReturn(result);
+
+        this.backupsAPI.create("daily", 1);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testCreateRejectsNonPositiveTaskId() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.<String, Object>singletonMap("task_id", 0));
+        Mockito.when(this.mockClient.post(Mockito.anyString(), Mockito.any()))
+               .thenReturn(result);
+
+        this.backupsAPI.create("daily", 1);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testListRejectsMissingBackupsField() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.<String, Object>emptyMap());
+        Mockito.when(this.mockClient.get(
+                "graphspaces/DEFAULT/graphs/test-graph/backups"))
+               .thenReturn(result);
+
+        this.backupsAPI.list();
+    }
+
+    @Test
+    public void testListAcceptsExplicitEmptyBackups() {
+        RestResult result = Mockito.mock(RestResult.class);
+        Mockito.when(result.readObject(Map.class)).thenReturn(
+                Collections.<String, Object>singletonMap("backups",
+                        Collections.emptyList()));
+        Mockito.when(this.mockClient.get(
+                "graphspaces/DEFAULT/graphs/test-graph/backups"))
+               .thenReturn(result);
+
+        Assert.assertTrue(this.backupsAPI.list().isEmpty());
     }
 }
